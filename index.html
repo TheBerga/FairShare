@@ -5,449 +5,544 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
 <title>HomeScore</title>
 <script>
-  // Apply theme immediately to avoid flash — runs before CSS/body render
   (function() {
     const uid = localStorage.getItem('homescore_active_user');
     const key = uid ? 'homescore_theme_' + uid : 'homescore_theme_default';
-    const theme = localStorage.getItem(key);
-    document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme',
+      localStorage.getItem(key) === 'light' ? 'light' : 'dark');
   })();
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
 <style>
+  /* ── TOKENS ── */
   :root {
     --bg: #0f0f0f;
     --surface: #1a1a1a;
     --surface2: #242424;
     --border: #2e2e2e;
-    --accent: #c8f135;
-    --accent2: #ff6b35;
+    --accent: #4f9cf9;
+    --accent-text: #ffffff;
+    --accent2: #f97316;
     --text: #f0f0f0;
-    --muted: #888;
-    --danger: #ff4444;
+    --muted: #777;
+    --danger: #f05252;
     --radius: 12px;
+    --transition: background 0.2s, color 0.2s, border-color 0.2s;
   }
   [data-theme="light"] {
-    --bg: #f5f4f0;
+    --bg: #f6f6f4;
     --surface: #ffffff;
-    --surface2: #eeece7;
-    --border: #dddbd4;
-    --accent: #5a9e00;
-    --accent2: #d94f00;
-    --text: #1a1a1a;
+    --surface2: #ededea;
+    --border: #dddbd6;
+    --accent: #2563eb;
+    --accent-text: #ffffff;
+    --accent2: #ea580c;
+    --text: #111111;
     --muted: #888;
-    --danger: #cc2200;
+    --danger: #dc2626;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* ── RESET ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
     height: 100%; background: var(--bg); color: var(--text);
-    font-family: 'DM Mono', monospace;
-    transition: background 0.25s, color 0.25s;
+    font-family: 'DM Mono', monospace; transition: var(--transition);
   }
 
-  /* ── THEME TOGGLE ── */
-  .theme-toggle-row {
-    display: flex; align-items: center; justify-content: space-between;
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 14px 16px;
+  /* ── LOADING ── */
+  #loading-overlay {
+    position: fixed; inset: 0; z-index: 999; background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
   }
-  .theme-toggle-label { font-size: 13px; }
-  .toggle-switch { position: relative; width: 48px; height: 26px; flex-shrink: 0; }
-  .toggle-switch input { opacity: 0; width: 0; height: 0; }
-  .toggle-slider {
-    position: absolute; inset: 0; cursor: pointer;
-    background: var(--border); border-radius: 26px; transition: background 0.2s;
+  #loading-overlay p { font-size: 13px; color: var(--muted); }
+  .spinner {
+    width: 22px; height: 22px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.7s linear infinite;
   }
-  .toggle-slider::before {
-    content: ''; position: absolute; width: 20px; height: 20px;
-    left: 3px; top: 3px; background: var(--muted); border-radius: 50%;
-    transition: transform 0.2s, background 0.2s;
-  }
-  .toggle-switch input:checked + .toggle-slider { background: var(--accent); }
-  .toggle-switch input:checked + .toggle-slider::before { transform: translateX(22px); background: #0f0f0f; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── ACTIVE USER SELECTOR ── */
-  #user-select-screen {
+  /* ── LOGO ── */
+  .logo { font-family: 'Syne', sans-serif; font-size: 36px; font-weight: 800; letter-spacing: -1.5px; }
+  .logo span { color: var(--accent); }
+
+  /* ── SCREENS ── */
+  .screen {
     min-height: 100vh; display: none; flex-direction: column;
-    align-items: center; justify-content: center; padding: 32px 24px; gap: 28px;
+    align-items: center; justify-content: center; padding: 28px 20px; gap: 28px;
   }
-  .user-select-card {
-    width: 100%; max-width: 360px; background: var(--surface);
-    border: 1px solid var(--border); border-radius: 16px; padding: 28px;
-    display: flex; flex-direction: column; gap: 14px;
-  }
-  .user-select-card h2 { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; }
-  .user-select-card p { font-size: 12px; color: var(--muted); }
-  .user-btn-list { display: flex; flex-direction: column; gap: 10px; }
-  .user-select-btn {
-    width: 100%; padding: 16px; background: var(--surface2);
-    border: 1.5px solid var(--border); border-radius: var(--radius);
-    color: var(--text); font-family: 'Syne', sans-serif; font-size: 16px;
-    font-weight: 700; cursor: pointer; transition: all 0.15s; text-align: center;
-  }
-  .user-select-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .screen.visible { display: flex; }
 
-  /* active user badge in topbar */
-  .active-user-badge {
-    font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 4px;
-  }
-  .active-user-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); display: inline-block; }
-    min-height: 100vh; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; padding: 32px 24px; gap: 32px;
-  }
-  .auth-logo { font-family: 'Syne', sans-serif; font-size: 48px; font-weight: 800; letter-spacing: -2px; }
-  .auth-logo span { color: var(--accent); }
-  .auth-card {
-    width: 100%; max-width: 420px; background: var(--surface);
+  /* ── CARDS ── */
+  .card {
+    width: 100%; max-width: 400px; background: var(--surface);
     border: 1px solid var(--border); border-radius: 16px;
-    padding: 28px; display: flex; flex-direction: column; gap: 16px;
+    padding: 24px; display: flex; flex-direction: column; gap: 14px;
   }
-  .auth-card h2 { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; }
-  .auth-card p { font-size: 12px; color: var(--muted); line-height: 1.6; }
-  .auth-input {
-    width: 100%; background: var(--surface2); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 14px 16px; color: var(--text);
-    font-family: 'DM Mono', monospace; font-size: 13px; outline: none; transition: border-color 0.2s;
-  }
-  .auth-input:focus { border-color: var(--accent); }
-  .auth-hint { font-size: 11px; color: var(--muted); }
-  .auth-hint a { color: var(--accent); text-decoration: none; }
-  .auth-hint strong { color: var(--accent); }
+  .card h2 { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700; }
+  .card p  { font-size: 12px; color: var(--muted); line-height: 1.65; }
 
+  /* ── FORM ── */
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  input[type=text], input[type=number], input[type=date], select {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 14px; color: var(--text);
+    font-family: 'DM Mono', monospace; font-size: 13px; outline: none;
+    transition: border-color .2s; -webkit-appearance: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  select option { background: var(--surface2); }
+  .row { display: flex; gap: 10px; }
+  .row .field { flex: 1; }
+  .hint { font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .hint a, .hint strong { color: var(--accent); text-decoration: none; }
+
+  /* ── BUTTONS ── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 12px 18px; border-radius: var(--radius);
+    font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 500;
+    cursor: pointer; border: none; transition: all .15s;
+  }
+  .btn-primary  { background: var(--accent); color: var(--accent-text); }
+  .btn-secondary{ background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); }
+  .btn-danger   { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+  .btn-ghost    { background: transparent; color: var(--muted); border: none; padding: 8px; }
+  .btn-ghost:hover { color: var(--text); }
+  .btn-sm  { padding: 7px 12px; font-size: 11px; }
+  .btn-full{ width: 100%; }
+
+  /* ── USER SELECT ── */
+  .user-pick-btn {
+    width: 100%; padding: 15px; background: var(--surface2);
+    border: 1.5px solid var(--border); border-radius: var(--radius);
+    color: var(--text); font-family: 'Syne', sans-serif; font-size: 15px;
+    font-weight: 700; cursor: pointer; transition: all .15s; text-align: center;
+  }
+  .user-pick-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── APP SHELL ── */
   #app { display: none; flex-direction: column; min-height: 100vh; }
   #app.visible { display: flex; }
 
   .topbar {
     position: sticky; top: 0; z-index: 100; background: var(--bg);
-    border-bottom: 1px solid var(--border); padding: 14px 20px;
-    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border); padding: 12px 16px;
+    display: flex; align-items: center; gap: 10px;
   }
-  .topbar-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -1px; }
-  .topbar-logo span { color: var(--accent); }
+  .topbar-left  { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  .topbar-title { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 19px; letter-spacing: -.8px; }
+  .topbar-title span { color: var(--accent); }
+  .topbar-sub   { font-size: 10px; color: var(--muted); margin-top: 1px; display: flex; align-items: center; gap: 4px; }
+  .user-dot     { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); display: inline-block; }
+  .topbar-actions { display: flex; gap: 6px; }
   .icon-btn {
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-    padding: 7px 10px; color: var(--muted); cursor: pointer; font-size: 16px; transition: all 0.15s;
+    padding: 7px 9px; color: var(--muted); cursor: pointer; font-size: 15px;
+    transition: all .15s; line-height: 1;
   }
   .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-  .main { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 100px; }
+  /* back button inside topbar */
+  .back-btn {
+    background: none; border: none; cursor: pointer; color: var(--muted);
+    font-size: 20px; padding: 4px 8px 4px 0; line-height: 1;
+    display: none; align-items: center;
+    transition: color .15s;
+  }
+  .back-btn:hover { color: var(--accent); }
+  .back-btn.visible { display: flex; }
 
+  .main { flex: 1; overflow-y: auto; padding: 18px; padding-bottom: 90px; }
+
+  /* ── BOTTOM NAV ── */
   .bottom-nav {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
     background: var(--surface); border-top: 1px solid var(--border); display: flex;
   }
   .nav-item {
-    flex: 1; display: flex; flex-direction: column; align-items: center;
-    gap: 4px; padding: 10px 4px; cursor: pointer; border: none; background: none;
-    color: var(--muted); font-family: 'DM Mono', monospace; font-size: 10px; transition: all 0.15s;
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 9px 4px; cursor: pointer; border: none; background: none;
+    color: var(--muted); font-family: 'DM Mono', monospace; font-size: 10px; transition: color .15s;
   }
-  .nav-item .nav-icon { font-size: 20px; }
+  .nav-icon { font-size: 19px; }
   .nav-item.active { color: var(--accent); }
 
-  .page { display: none; }
+  /* ── PAGES ── */
+  .page { display: none; animation: fadeIn .15s ease; }
   .page.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-  .section-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; }
+  .page-header { margin-bottom: 16px; }
+  .page-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; }
+  .page-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
-  .btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 12px 20px; border-radius: var(--radius); font-family: 'DM Mono', monospace;
-    font-size: 13px; cursor: pointer; border: none; transition: all 0.15s; font-weight: 500;
+  /* ── LIST CARDS ── */
+  .list-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px; margin-bottom: 8px;
   }
-  .btn-primary { background: var(--accent); color: #0f0f0f; }
-  .btn-primary:hover { background: #d4ff4a; }
-  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
-  .btn-secondary:hover { border-color: var(--accent); }
-  .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
-  .btn-sm { padding: 7px 12px; font-size: 11px; }
-  .btn-full { width: 100%; }
-
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
-  .card-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .card-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; }
-  .card-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .list-card-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .list-card-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 14px; }
+  .list-card-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
   .tag { display: inline-block; padding: 3px 8px; border-radius: 20px; font-size: 10px; font-weight: 500; }
-  .tag-orange { background: rgba(255,107,53,0.15); color: var(--accent2); }
+  .tag-blue   { background: rgba(79,156,249,.15); color: var(--accent); }
+  .tag-orange { background: rgba(249,115,22,.15); color: var(--accent2); }
+  .tag-red    { background: rgba(240,82,82,.15);  color: var(--danger); }
 
-  .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-  .form-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-  .form-input, .form-select {
-    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 12px 14px; color: var(--text); font-family: 'DM Mono', monospace;
-    font-size: 13px; outline: none; width: 100%; transition: border-color 0.2s;
-  }
-  .form-input:focus, .form-select:focus { border-color: var(--accent); }
-  .form-row { display: flex; gap: 10px; }
-  .form-row .form-group { flex: 1; }
-
-  .add-task-hero { text-align: center; padding: 24px 0 20px; }
-  .add-task-hero h1 { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; }
-  .add-task-hero p { color: var(--muted); font-size: 13px; margin-top: 6px; }
-
-  .task-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
+  /* ── TASK CHIPS (Add page) ── */
+  .task-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 16px; }
   .task-chip {
     background: var(--surface); border: 1.5px solid var(--border);
-    border-radius: var(--radius); padding: 14px 12px;
-    cursor: pointer; transition: all 0.15s; text-align: center;
+    border-radius: var(--radius); padding: 13px 10px;
+    cursor: pointer; transition: all .15s; text-align: center;
   }
-  .task-chip:hover { border-color: var(--accent); }
-  .task-chip.selected { border-color: var(--accent); background: rgba(200,241,53,0.08); }
-  .task-chip-name { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; }
-  .task-chip-meta { font-size: 10px; color: var(--muted); margin-top: 3px; }
-  .task-chip-multiplier { font-size: 10px; color: var(--accent2); margin-top: 2px; }
+  .task-chip:hover  { border-color: var(--accent); }
+  .task-chip.selected { border-color: var(--accent); background: rgba(79,156,249,.08); }
+  .chip-name { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; }
+  .chip-meta { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .chip-bonus{ font-size: 10px; color: var(--accent2); margin-top: 2px; }
 
-  .filter-bar { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 20px; }
+  .selected-info {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 13px 16px; margin-bottom: 14px;
+    display: none;
+  }
+  .selected-info-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+  /* ── FILTER BAR ── */
+  .filter-bar { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 2px; margin-bottom: 18px; }
   .filter-bar::-webkit-scrollbar { display: none; }
   .filter-chip {
-    flex-shrink: 0; padding: 6px 14px; border-radius: 20px; font-size: 11px;
+    flex-shrink: 0; padding: 5px 13px; border-radius: 20px; font-size: 11px;
     cursor: pointer; border: 1px solid var(--border); background: var(--surface);
-    color: var(--muted); transition: all 0.15s; font-family: 'DM Mono', monospace;
+    color: var(--muted); transition: all .15s; font-family: 'DM Mono', monospace;
   }
-  .filter-chip.active { background: var(--accent); color: #0f0f0f; border-color: var(--accent); font-weight: 500; }
+  .filter-chip.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 
-  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-  .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
-  .kpi-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
-  .kpi-value { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800; }
-  .kpi-sub { font-size: 10px; color: var(--muted); margin-top: 4px; }
-  .kpi-card.accent { background: var(--accent); border-color: var(--accent); }
-  .kpi-card.accent .kpi-label, .kpi-card.accent .kpi-value, .kpi-card.accent .kpi-sub { color: #0f0f0f; }
+  /* ── KPI GRID ── */
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 18px; }
+  .kpi-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px;
+  }
+  .kpi-card.hi { background: var(--accent); border-color: var(--accent); }
+  .kpi-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
+  .kpi-value { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; }
+  .kpi-sub   { font-size: 10px; color: var(--muted); margin-top: 3px; }
+  .kpi-card.hi .kpi-label,
+  .kpi-card.hi .kpi-value,
+  .kpi-card.hi .kpi-sub { color: var(--accent-text); }
 
-  .balance-bar-wrap { margin-bottom: 20px; }
-  .balance-bar-labels { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px; }
-  .balance-bar-track { height: 12px; border-radius: 6px; background: var(--surface2); overflow: hidden; display: flex; }
-  .balance-bar-fill { height: 100%; transition: width 0.5s ease; }
-  .bar-p1 { background: var(--accent); }
-  .bar-p2 { background: var(--accent2); }
+  /* ── BALANCE BAR ── */
+  .bal-wrap  { margin-bottom: 18px; }
+  .bal-labels{ display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 5px; }
+  .bal-track { height: 10px; border-radius: 5px; background: var(--surface2); overflow: hidden; display: flex; }
+  .bal-fill  { height: 100%; transition: width .5s ease; }
+  .bal-a { background: var(--accent); }
+  .bal-b { background: var(--accent2); }
 
-  .stat-list { display: flex; flex-direction: column; gap: 8px; }
+  /* ── STAT LIST ── */
+  .stat-list { display: flex; flex-direction: column; gap: 7px; }
   .stat-row {
-    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 11px 14px;
+    display: flex; align-items: center; justify-content: space-between;
   }
-  .stat-row-name { font-size: 13px; font-weight: 500; }
-  .stat-row-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
-  .stat-row-right { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; }
+  .stat-name { font-size: 13px; font-weight: 500; }
+  .stat-sub  { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .stat-num  { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; }
 
-  .priority-card {
-    background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius);
-    padding: 16px; margin-bottom: 10px; position: relative; overflow: hidden;
+  /* ── PRIORITY CARDS ── */
+  .pri-card {
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: var(--radius); padding: 14px; margin-bottom: 9px;
+    position: relative; overflow: hidden;
   }
-  .priority-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
-  .priority-card.overdue::before { background: var(--danger); }
-  .priority-card.due-soon::before { background: var(--accent2); }
-  .priority-card.ok::before { background: var(--accent); }
-  .priority-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
-  .priority-badge.overdue { background: rgba(255,68,68,0.15); color: var(--danger); }
-  .priority-badge.due-soon { background: rgba(255,107,53,0.15); color: var(--accent2); }
-  .priority-badge.ok { background: rgba(200,241,53,0.15); color: var(--accent); }
-  .progress-bar-track { height: 4px; border-radius: 2px; background: var(--surface2); margin-top: 10px; overflow: hidden; }
-  .progress-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
+  .pri-card::before { content:''; position:absolute; left:0;top:0;bottom:0;width:4px; }
+  .pri-card.overdue::before  { background: var(--danger); }
+  .pri-card.due-soon::before { background: var(--accent2); }
+  .pri-card.ok::before       { background: var(--accent); }
+  .pri-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 500; flex-shrink: 0; }
+  .pri-badge.overdue  { background: rgba(240,82,82,.15);  color: var(--danger); }
+  .pri-badge.due-soon { background: rgba(249,115,22,.15); color: var(--accent2); }
+  .pri-badge.ok       { background: rgba(79,156,249,.15); color: var(--accent); }
+  .prog-track { height: 3px; border-radius: 2px; background: var(--surface2); margin-top: 10px; overflow: hidden; }
+  .prog-fill  { height: 100%; border-radius: 2px; transition: width .5s; }
 
-  .settings-section { margin-bottom: 28px; }
+  /* ── SETTINGS ── */
+  .settings-section { margin-bottom: 26px; }
   .settings-section-title {
-    font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em;
-    margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
+    font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .1em;
+    margin-bottom: 9px; padding-bottom: 5px; border-bottom: 1px solid var(--border);
   }
   .user-chip {
-    display: inline-flex; align-items: center; gap: 8px; background: var(--surface2);
-    border: 1px solid var(--border); border-radius: 20px; padding: 6px 12px; font-size: 12px; margin: 4px;
+    display: inline-flex; align-items: center; gap: 7px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 20px; padding: 5px 11px;
+    font-size: 12px; margin: 3px;
   }
-  .remove-btn { cursor: pointer; color: var(--muted); font-size: 14px; line-height: 1; background: none; border: none; }
+  .remove-btn { cursor: pointer; color: var(--muted); background: none; border: none; font-size: 14px; line-height: 1; }
   .remove-btn:hover { color: var(--danger); }
 
+  /* ── THEME TOGGLE ── */
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 13px 15px;
+  }
+  .toggle-label { font-size: 13px; }
+  .switch { position: relative; width: 46px; height: 25px; flex-shrink: 0; }
+  .switch input { opacity:0;width:0;height:0; }
+  .slider {
+    position: absolute; inset: 0; cursor: pointer;
+    background: var(--border); border-radius: 25px; transition: background .2s;
+  }
+  .slider::before {
+    content:''; position:absolute; width:19px;height:19px;
+    left:3px;top:3px; background:var(--muted); border-radius:50%;
+    transition: transform .2s, background .2s;
+  }
+  .switch input:checked + .slider { background: var(--accent); }
+  .switch input:checked + .slider::before { transform:translateX(21px); background: var(--accent-text); }
+
+  /* ── MODAL ── */
   .modal-overlay {
-    position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.7);
-    display: none; align-items: flex-end; justify-content: center; backdrop-filter: blur(4px);
+    position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,.65);
+    display: none; align-items: flex-end; justify-content: center;
+    backdrop-filter: blur(4px);
   }
   .modal-overlay.open { display: flex; }
   .modal {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 20px 20px 0 0;
-    padding: 28px 24px 40px; width: 100%; max-width: 480px; max-height: 90vh;
-    overflow-y: auto; animation: slideUp 0.25s ease;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px 20px 0 0; padding: 26px 22px 40px;
+    width: 100%; max-width: 480px; max-height: 92vh; overflow-y: auto;
+    animation: slideUp .22s ease;
   }
-  @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
-  .modal-title { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; }
-  .modal-close { cursor: pointer; font-size: 22px; color: var(--muted); line-height: 1; background: none; border: none; }
+  @keyframes slideUp { from { transform: translateY(40px); opacity:0; } to { transform: none; opacity:1; } }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+  .modal-title  { font-family:'Syne',sans-serif; font-size:19px; font-weight:800; }
+  .modal-close  { cursor:pointer;font-size:21px;color:var(--muted);background:none;border:none;line-height:1; }
 
+  /* ── TOAST ── */
   .toast {
-    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
-    background: var(--accent); color: #0f0f0f; padding: 10px 20px; border-radius: 20px;
-    font-size: 13px; font-weight: 500; z-index: 300; opacity: 0; transition: opacity 0.3s;
-    pointer-events: none; white-space: nowrap;
+    position: fixed; bottom: 76px; left: 50%; transform: translateX(-50%);
+    background: var(--accent); color: var(--accent-text);
+    padding: 9px 18px; border-radius: 20px; font-size: 13px; font-weight: 500;
+    z-index: 300; opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap;
   }
   .toast.show { opacity: 1; }
 
-  .empty-state { text-align: center; padding: 48px 24px; color: var(--muted); }
-  .empty-state .emoji { font-size: 40px; margin-bottom: 12px; }
-  .empty-state p { font-size: 13px; line-height: 1.6; }
+  /* ── EMPTY ── */
+  .empty { text-align: center; padding: 44px 20px; color: var(--muted); }
+  .empty .ico { font-size: 38px; margin-bottom: 10px; }
+  .empty p { font-size: 13px; line-height: 1.6; }
 
-  .loading-spinner {
-    display: inline-block; width: 20px; height: 20px;
-    border: 2px solid var(--border); border-top-color: var(--accent);
-    border-radius: 50%; animation: spin 0.6s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .loading-overlay {
-    position: fixed; inset: 0; z-index: 500; background: var(--bg);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
-  }
-  .loading-overlay p { color: var(--muted); font-size: 13px; }
-
-  .divider { height: 1px; background: var(--border); margin: 16px 0; }
+  .divider { height: 1px; background: var(--border); margin: 14px 0; }
+  .mt-2 { margin-top: 8px; }
+  .mb-0 { margin-bottom: 0 !important; }
 </style>
 </head>
 <body>
 
-<div class="loading-overlay" id="loading-overlay">
-  <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;">Home<span style="color:var(--accent)">Score</span></div>
-  <div class="loading-spinner"></div>
+<!-- LOADING -->
+<div id="loading-overlay">
+  <div class="logo">Home<span>Score</span></div>
+  <div class="spinner"></div>
   <p id="loading-text">Loading…</p>
 </div>
 
-<div id="auth-screen" style="display:none;">
-  <div class="auth-logo">Home<span>Score</span></div>
-  <div class="auth-card">
+<!-- AUTH SCREEN -->
+<div id="auth-screen" class="screen">
+  <div class="logo">Home<span>Score</span></div>
+  <div class="card">
     <h2>Connect your Sheet</h2>
-    <p>Your Google Sheet ID acts as your private access key. Only people with this ID can access your data.</p>
+    <p>You'll need two things: your Google Sheet ID (used as your private key) and a Google Apps Script URL (handles all read/write).</p>
 
-    <div>
-      <p style="font-size:11px;color:var(--muted);margin-bottom:6px;">STEP 1 — Sheet ID</p>
-      <input type="text" id="sheet-id-input" class="auth-input" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" autocomplete="off" autocorrect="off" spellcheck="false"/>
-      <p class="auth-hint" style="margin-top:4px;">Find it in your Sheet URL: docs.google.com/spreadsheets/d/<strong>THIS_PART</strong>/edit</p>
+    <div class="field">
+      <label>Google Sheet ID</label>
+      <input type="text" id="inp-sheet-id" placeholder="1BxiMVs0XRA5nFMd…" autocomplete="off" spellcheck="false"/>
+      <span class="hint">From your Sheet URL: docs.google.com/spreadsheets/d/<strong>THIS_PART</strong>/edit</span>
     </div>
 
-    <div>
-      <p style="font-size:11px;color:var(--muted);margin-bottom:6px;">STEP 2 — Google Sheets API Key</p>
-      <input type="text" id="api-key-input" class="auth-input" placeholder="AIzaSy..." autocomplete="off" autocorrect="off" spellcheck="false"/>
-      <p class="auth-hint" style="margin-top:4px;">Get a free key at <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a> → Enable Sheets API → Create API Key</p>
+    <div class="field">
+      <label>Apps Script Web App URL</label>
+      <input type="text" id="inp-script-url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false"/>
+      <span class="hint">See setup guide for how to create this (free, ~5 min). <a href="#" onclick="showSetupGuide()">Show guide ↓</a></span>
     </div>
 
     <button class="btn btn-primary btn-full" onclick="connectSheet()">Connect →</button>
     <div class="divider"></div>
-    <p class="auth-hint">Don't have a sheet? <a href="https://sheets.new" target="_blank">Create one here</a>, then share it so "Anyone with the link" can <strong>edit</strong>.</p>
+    <span class="hint">Don't have a sheet? <a href="https://sheets.new" target="_blank">Create one here</a>, shared as "Anyone with link can edit".</span>
+  </div>
+
+  <div id="setup-guide" class="card" style="display:none;max-width:400px;">
+    <h2>Apps Script Setup (5 min)</h2>
+    <p><strong>1.</strong> Open your Google Sheet → Extensions → Apps Script</p>
+    <p><strong>2.</strong> Delete any existing code, paste the script below</p>
+    <p><strong>3.</strong> Click Deploy → New deployment → Web App</p>
+    <p><strong>4.</strong> Set "Execute as" = Me, "Who has access" = Anyone</p>
+    <p><strong>5.</strong> Copy the Web App URL and paste it above</p>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;line-height:1.7;word-break:break-all;cursor:pointer;" onclick="copyScript()" title="Click to copy">
+      <strong style="color:var(--accent);">Click to copy the Apps Script code ↓</strong><br/><br/>
+      function doGet(e){return handle(e)}<br/>
+      function doPost(e){return handle(e)}<br/>
+      function handle(e){<br/>
+      &nbsp;&nbsp;try{<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;var p=e.parameter,ss=SpreadsheetApp.getActiveSpreadsheet();<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;var sh=ss.getSheetByName(p.sheet)||ss.insertSheet(p.sheet);<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;if(p.action==='get'){<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return out(sh.getDataRange().getValues());<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;}else if(p.action==='append'){<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sh.appendRow(JSON.parse(p.row));return out('ok');<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;}else if(p.action==='rewrite'){<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sh.clearContents();<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;var rows=JSON.parse(p.rows);<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if(rows.length)sh.getRange(1,1,rows.length,rows[0].length).setValues(rows);<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return out('ok');<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;}}<br/>
+      &nbsp;&nbsp;}catch(err){return out({error:err.message})}<br/>
+      }<br/>
+      function out(d){<br/>
+      &nbsp;&nbsp;return ContentService.createTextOutput(JSON.stringify(d))<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;.setMimeType(ContentService.MimeType.JSON);<br/>
+      }
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="copyScript()">📋 Copy Script Code</button>
   </div>
 </div>
 
 <!-- USER SELECT SCREEN -->
-<div id="user-select-screen">
-  <div class="auth-logo">Home<span>Score</span></div>
-  <div class="user-select-card">
+<div id="user-select-screen" class="screen">
+  <div class="logo">Home<span>Score</span></div>
+  <div class="card">
     <h2>Who are you?</h2>
-    <p>Select your name to load your preferences for this device.</p>
-    <div class="user-btn-list" id="user-select-list"></div>
+    <p>Pick your name so your preferences are saved to this device.</p>
+    <div id="user-pick-list" style="display:flex;flex-direction:column;gap:9px;"></div>
   </div>
 </div>
 
+<!-- APP -->
 <div id="app">
   <div class="topbar">
-    <div>
-      <div class="topbar-logo">Home<span>Score</span></div>
-      <div class="active-user-badge" id="active-user-badge" style="display:none;">
-        <span class="active-user-dot"></span><span id="active-user-name"></span>
+    <button class="back-btn" id="back-btn" onclick="goBack()">←</button>
+    <div class="topbar-left">
+      <div class="topbar-title">Home<span>Score</span></div>
+      <div class="topbar-sub" id="topbar-sub" style="display:none;">
+        <span class="user-dot"></span><span id="topbar-user"></span>
       </div>
     </div>
-    <div style="display:flex;gap:8px;">
-      <button class="icon-btn" onclick="showPage('add')" title="Quick add">＋</button>
-      <button class="icon-btn" onclick="logout()" title="Disconnect">⏏</button>
+    <div class="topbar-actions">
+      <button class="icon-btn" onclick="showPage('add')">＋</button>
+      <button class="icon-btn" onclick="logout()">⏏</button>
     </div>
   </div>
 
   <div class="main">
     <!-- DASHBOARD -->
     <div class="page active" id="page-dashboard">
-      <div class="section-header"><div class="section-title">Dashboard</div></div>
+      <div class="page-header"><div class="page-title">Dashboard</div></div>
       <div class="filter-bar" id="filter-bar"></div>
       <div id="dashboard-content">
-        <div class="empty-state"><div class="emoji">📊</div><p>No data yet.<br/>Start logging tasks!</p></div>
+        <div class="empty"><div class="ico">📊</div><p>No data yet.<br/>Start logging tasks!</p></div>
       </div>
     </div>
 
     <!-- ADD TASK -->
     <div class="page" id="page-add">
-      <div class="add-task-hero">
-        <h1>Log a Task</h1>
-        <p>Select what you did and who did it.</p>
+      <div class="page-header">
+        <div class="page-title">Log a Task</div>
+        <div class="page-sub">Tap what you did, pick who, confirm.</div>
       </div>
-      <div class="form-group">
-        <div class="form-label">Task</div>
+
+      <div class="field" style="margin-bottom:12px;">
+        <label>Task</label>
         <div class="task-grid" id="task-grid"></div>
       </div>
-      <div id="selected-task-info" style="display:none;" class="card" style="margin-bottom:14px;">
-        <div class="card-row">
+
+      <div class="selected-info" id="selected-info">
+        <div class="selected-info-row">
           <div>
-            <div class="card-title" id="sel-task-name">—</div>
-            <div class="card-meta" id="sel-task-time">—</div>
+            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;" id="sel-name">—</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px;" id="sel-time">—</div>
           </div>
-          <div id="sel-task-multiplier" style="display:none;" class="tag tag-orange">×</div>
+          <div id="sel-mult" style="display:none;" class="tag tag-orange">×</div>
         </div>
       </div>
+
       <div class="divider"></div>
-      <div class="form-group">
-        <div class="form-label">Who did it?</div>
-        <div class="form-row" id="user-btns"></div>
+
+      <div class="field" style="margin-bottom:12px;">
+        <label>Who did it?</label>
+        <div id="user-btns" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
       </div>
-      <div class="form-group">
-        <div class="form-label">Date</div>
-        <input type="date" class="form-input" id="log-date"/>
+
+      <div class="field" style="margin-bottom:16px;">
+        <label>Date</label>
+        <input type="date" id="log-date"/>
       </div>
-      <button class="btn btn-primary btn-full" onclick="submitLog()" id="submit-log-btn">Log Task ✓</button>
+
+      <button class="btn btn-primary btn-full" id="log-btn" onclick="submitLog()">Log Task ✓</button>
     </div>
 
     <!-- PRIORITIES -->
     <div class="page" id="page-priorities">
-      <div class="section-header"><div class="section-title">Priorities</div></div>
-      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;">Recurring tasks sorted by urgency. Red = overdue.</p>
+      <div class="page-header">
+        <div class="page-title">Priorities</div>
+        <div class="page-sub">Recurring tasks sorted by urgency.</div>
+      </div>
       <div id="priorities-list"></div>
     </div>
 
     <!-- SETTINGS -->
     <div class="page" id="page-settings">
-      <div class="section-header"><div class="section-title">Settings</div></div>
+      <div class="page-header"><div class="page-title">Settings</div></div>
 
-      <!-- APPEARANCE -->
+      <!-- Appearance -->
       <div class="settings-section">
         <div class="settings-section-title">Appearance</div>
-        <div class="theme-toggle-row">
-          <span class="theme-toggle-label" id="theme-label">🌙 Dark mode</span>
-          <label class="toggle-switch">
+        <div class="toggle-row">
+          <span class="toggle-label" id="theme-label">🌙 Dark mode</span>
+          <label class="switch">
             <input type="checkbox" id="theme-toggle" onchange="toggleTheme()"/>
-            <span class="toggle-slider"></span>
+            <span class="slider"></span>
           </label>
         </div>
-        <p style="font-size:11px;color:var(--muted);margin-top:8px;">Theme is saved per device for the active user.</p>
+        <p class="hint mt-2">Saved per user on this device.</p>
       </div>
 
-      <!-- ACTIVE USER -->
+      <!-- Active user -->
       <div class="settings-section">
         <div class="settings-section-title">Active User (this device)</div>
-        <div id="active-user-setting" style="margin-bottom:10px;"></div>
+        <div id="active-user-display" style="margin-bottom:9px;"></div>
         <button class="btn btn-secondary btn-sm" onclick="switchUser()">Switch User</button>
       </div>
+
+      <!-- Users -->
       <div class="settings-section">
         <div class="settings-section-title">Users</div>
         <div id="users-list" style="margin-bottom:10px;"></div>
-        <div class="form-row">
-          <div class="form-group" style="flex:1;margin-bottom:0;">
-            <input type="text" class="form-input" id="new-user-input" placeholder="Name"/>
-          </div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="new-user-input" placeholder="Name" style="flex:1;"/>
           <button class="btn btn-secondary" onclick="addUser()">Add</button>
         </div>
       </div>
+
+      <!-- Tasks -->
       <div class="settings-section">
         <div class="settings-section-title">Tasks</div>
-        <div id="tasks-settings-list" style="margin-bottom:12px;"></div>
+        <div id="tasks-list" style="margin-bottom:10px;"></div>
         <button class="btn btn-secondary btn-full" onclick="openTaskModal()">＋ Add Task</button>
       </div>
+
       <div class="divider"></div>
       <div style="text-align:center;">
-        <p style="font-size:11px;color:var(--muted);margin-bottom:8px;">Connected to sheet: <span id="sheet-id-display" style="color:var(--accent);"></span></p>
-        <button class="btn btn-danger btn-sm" onclick="logout()">Disconnect Sheet</button>
+        <p class="hint" style="margin-bottom:8px;">Sheet: <span id="sheet-id-display" style="color:var(--accent);"></span></p>
+        <button class="btn btn-danger btn-sm" onclick="logout()">Disconnect</button>
       </div>
     </div>
-  </div>
+  </div><!-- /main -->
 
   <nav class="bottom-nav">
     <button class="nav-item active" data-page="dashboard" onclick="showPage('dashboard')">
@@ -463,32 +558,32 @@
       <span class="nav-icon">⚙︎</span><span>Settings</span>
     </button>
   </nav>
-</div>
+</div><!-- /app -->
 
 <!-- TASK MODAL -->
 <div class="modal-overlay" id="task-modal">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title" id="task-modal-title">Add Task</div>
+      <div class="modal-title" id="modal-title">Add Task</div>
       <button class="modal-close" onclick="closeTaskModal()">✕</button>
     </div>
-    <div class="form-group">
-      <div class="form-label">Task Name</div>
-      <input type="text" class="form-input" id="task-name-input" placeholder="e.g. Clean bathroom"/>
+    <div class="field" style="margin-bottom:12px;">
+      <label>Task Name</label>
+      <input type="text" id="t-name" placeholder="e.g. Clean bathroom"/>
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <div class="form-label">Time (minutes)</div>
-        <input type="number" class="form-input" id="task-time-input" placeholder="15" min="1"/>
+    <div class="row" style="margin-bottom:12px;">
+      <div class="field">
+        <label>Time (minutes)</label>
+        <input type="number" id="t-mins" placeholder="15" min="1"/>
       </div>
-      <div class="form-group">
-        <div class="form-label">Frequency (days)</div>
-        <input type="number" class="form-input" id="task-freq-input" placeholder="optional" min="1"/>
+      <div class="field">
+        <label>Frequency (days)</label>
+        <input type="number" id="t-freq" placeholder="optional" min="1"/>
       </div>
     </div>
-    <div class="form-group">
-      <div class="form-label">Multiplier when overdue (optional)</div>
-      <input type="number" class="form-input" id="task-multiplier-input" placeholder="e.g. 1.5" step="0.1" min="1"/>
+    <div class="field" style="margin-bottom:18px;">
+      <label>Multiplier when overdue</label>
+      <input type="number" id="t-mult" placeholder="e.g. 1.5 (optional)" step="0.1" min="1"/>
     </div>
     <button class="btn btn-primary btn-full" onclick="saveTask()">Save Task</button>
   </div>
@@ -497,337 +592,325 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const SHEET_KEY = 'homescore_sheet_id';
-const API_KEY_STORE = 'homescore_api_key';
-const ACTIVE_USER_KEY = 'homescore_active_user'; // stored as userId
-const API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
-const TABS = { tasks: 'Tasks', users: 'Users', logs: 'Logs' };
+// ─── STORAGE KEYS ────────────────────────────────────────────────
+const K_SHEET   = 'homescore_sheet_id';
+const K_SCRIPT  = 'homescore_script_url';
+const K_USER    = 'homescore_active_user';
+const themeKey  = () => activeUserId ? `homescore_theme_${activeUserId}` : 'homescore_theme_default';
 
-let sheetId = '', apiKey = '';
-let state = { tasks: [], users: [], logs: [] };
-let selectedTask = null, selectedUser = null;
-let currentFilter = '30d', editingTaskId = null;
-let activeUserId = null; // the "who am I on this device" user
+// ─── STATE ───────────────────────────────────────────────────────
+let sheetId='', scriptUrl='';
+let state={ tasks:[], users:[], logs:[] };
+let selectedTask=null, selectedUser=null;
+let currentFilter='30d', editingTaskId=null;
+let activeUserId=null;
+let pageHistory=[];
 
-window.addEventListener('DOMContentLoaded', async () => {
-  // Apply theme immediately before any render to avoid flash
+// ─── BOOT ────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async ()=>{
   applyStoredTheme();
-  const sid = localStorage.getItem(SHEET_KEY);
-  const ak = localStorage.getItem(API_KEY_STORE);
-  if (sid && ak) { sheetId = sid; apiKey = ak; await initApp(); }
-  else showAuthScreen();
+  const sid=localStorage.getItem(K_SHEET);
+  const surl=localStorage.getItem(K_SCRIPT);
+  if(sid&&surl){ sheetId=sid; scriptUrl=surl; await initApp(); }
+  else showScreen('auth-screen');
 });
 
-function showAuthScreen() {
-  document.getElementById('loading-overlay').style.display = 'none';
-  document.getElementById('auth-screen').style.display = 'flex';
-  document.getElementById('app').style.display = 'none';
+function showScreen(id){
+  document.getElementById('loading-overlay').style.display='none';
+  ['auth-screen','user-select-screen','app'].forEach(s=>{
+    const el=document.getElementById(s);
+    if(s==='app'){ el.style.display=(s===id?'flex':'none'); }
+    else { el.classList.toggle('visible', s===id); }
+  });
 }
 
-async function connectSheet() {
-  const sid = document.getElementById('sheet-id-input').value.trim();
-  const ak = document.getElementById('api-key-input').value.trim();
-  if (!sid) { alert('Please enter your Google Sheet ID.'); return; }
-  if (!ak) { alert('Please enter your Google Sheets API Key.'); return; }
-  sheetId = sid; apiKey = ak;
-  localStorage.setItem(SHEET_KEY, sid);
-  localStorage.setItem(API_KEY_STORE, ak);
+async function connectSheet(){
+  const sid=document.getElementById('inp-sheet-id').value.trim();
+  const surl=document.getElementById('inp-script-url').value.trim();
+  if(!sid){ showToast('Enter your Sheet ID'); return; }
+  if(!surl){ showToast('Enter your Apps Script URL'); return; }
+  sheetId=sid; scriptUrl=surl;
+  localStorage.setItem(K_SHEET,sid); localStorage.setItem(K_SCRIPT,surl);
   await initApp();
 }
 
-async function initApp() {
-  setLoading('Connecting to your sheet…');
-  try {
-    await ensureSheetStructure();
-    await loadAllData();
-    document.getElementById('loading-overlay').style.display = 'none';
-    document.getElementById('auth-screen').style.display = 'none';
-
-    // Check if we have a saved active user for this device
-    const savedUserId = localStorage.getItem(ACTIVE_USER_KEY);
-    const savedUserExists = savedUserId && state.users.find(u => u.id === savedUserId);
-
-    if (state.users.length === 0) {
-      // No users yet — go straight to app, they'll add users in settings
-      launchApp(null);
-    } else if (savedUserExists) {
-      launchApp(savedUserId);
-    } else {
-      // Ask who they are
-      showUserSelectScreen();
-    }
-  } catch(e) {
-    document.getElementById('loading-overlay').style.display = 'none';
-    alert('Could not connect:\n' + e.message + '\n\nCheck:\n1. Sheet ID is correct\n2. Sheet shared as "Anyone with link can edit"\n3. API Key is valid & Sheets API is enabled');
-    showAuthScreen();
+async function initApp(){
+  document.getElementById('loading-overlay').style.display='flex';
+  document.getElementById('loading-text').textContent='Connecting…';
+  try{
+    await ensureSheets();
+    await loadAll();
+    document.getElementById('sheet-id-display').textContent=sheetId.substring(0,14)+'…';
+    const savedUid=localStorage.getItem(K_USER);
+    const savedExists=savedUid&&state.users.find(u=>u.id===savedUid);
+    if(state.users.length===0||savedExists) launchApp(savedUid||null);
+    else showUserSelect();
+  }catch(e){
+    document.getElementById('loading-overlay').style.display='none';
+    alert('Connection failed:\n'+e.message+'\n\nCheck your Sheet ID and Apps Script URL.');
+    showScreen('auth-screen');
   }
 }
 
-function launchApp(userId) {
-  activeUserId = userId;
-  if (userId) localStorage.setItem(ACTIVE_USER_KEY, userId);
-
-  document.getElementById('user-select-screen').style.display = 'none';
-  document.getElementById('app').style.display = 'flex';
-  document.getElementById('app').style.flexDirection = 'column';
-  document.getElementById('app').style.minHeight = '100vh';
-  document.getElementById('sheet-id-display').textContent = sheetId.substring(0, 14) + '…';
-
-  // Show active user in topbar
-  const u = state.users.find(u => u.id === userId);
-  if (u) {
-    document.getElementById('active-user-name').textContent = u.name;
-    document.getElementById('active-user-badge').style.display = 'flex';
-  } else {
-    document.getElementById('active-user-badge').style.display = 'none';
+function launchApp(uid){
+  activeUserId=uid;
+  if(uid) localStorage.setItem(K_USER,uid);
+  applyStoredTheme(); updateThemeUI();
+  const u=state.users.find(u=>u.id===uid);
+  if(u){
+    document.getElementById('topbar-user').textContent=u.name;
+    document.getElementById('topbar-sub').style.display='flex';
+  }else{
+    document.getElementById('topbar-sub').style.display='none';
   }
-
-  // Apply this user's theme
-  applyStoredTheme();
-  updateThemeToggleUI();
-
-  setupAddPage(); renderDashboard(); renderPriorities(); renderSettingsPage();
+  showScreen('app');
+  pageHistory=[];
+  showPage('dashboard');
+  renderSettingsPage();
 }
 
-function showUserSelectScreen() {
-  document.getElementById('loading-overlay').style.display = 'none';
-  document.getElementById('auth-screen').style.display = 'none';
-  document.getElementById('app').style.display = 'none';
-  const screen = document.getElementById('user-select-screen');
-  screen.style.display = 'flex';
-
-  const list = document.getElementById('user-select-list');
-  list.innerHTML = state.users.map(u =>
-    `<button class="user-select-btn" onclick="launchApp('${u.id}')">${u.name}</button>`
+function showUserSelect(){
+  showScreen('user-select-screen');
+  const list=document.getElementById('user-pick-list');
+  list.innerHTML=state.users.map(u=>
+    `<button class="user-pick-btn" onclick="launchApp('${u.id}')">${u.name}</button>`
   ).join('');
 }
 
-function switchUser() {
-  // Clear active user and show selector
-  localStorage.removeItem(ACTIVE_USER_KEY);
-  activeUserId = null;
-  document.getElementById('app').style.display = 'none';
-  showUserSelectScreen();
+function switchUser(){
+  localStorage.removeItem(K_USER);
+  activeUserId=null;
+  showUserSelect();
 }
 
-function logout() {
-  if (!confirm('Disconnect from this sheet?')) return;
-  localStorage.removeItem(SHEET_KEY);
-  localStorage.removeItem(API_KEY_STORE);
+function logout(){
+  if(!confirm('Disconnect from this sheet?')) return;
+  [K_SHEET,K_SCRIPT,K_USER].forEach(k=>localStorage.removeItem(k));
   location.reload();
 }
 
-function setLoading(msg) {
-  document.getElementById('loading-overlay').style.display = 'flex';
-  document.getElementById('loading-text').textContent = msg;
-}
+// ─── NAVIGATION ──────────────────────────────────────────────────
+const PAGES_WITH_BACK=['add','priorities','settings'];
 
-// ── SHEETS API ──────────────────────────────────────────────────
-async function sheetsGet(range) {
-  const r = await fetch(`${API_BASE}/${sheetId}/values/${encodeURIComponent(range)}?key=${apiKey}`);
-  if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || 'Read error'); }
-  return (await r.json()).values || [];
-}
+function showPage(name, pushHistory=true){
+  const prev=document.querySelector('.page.active')?.id?.replace('page-','');
+  if(prev&&pushHistory&&prev!==name) pageHistory.push(prev);
 
-async function sheetsAppend(tab, values) {
-  const r = await fetch(
-    `${API_BASE}/${sheetId}/values/${encodeURIComponent(tab)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS&key=${apiKey}`,
-    { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({values}) }
-  );
-  if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || 'Append error'); }
-}
-
-async function sheetsClear(tab) {
-  const r = await fetch(`${API_BASE}/${sheetId}/values/${encodeURIComponent(tab)}:clear?key=${apiKey}`,
-    { method:'POST', headers:{'Content-Type':'application/json'} });
-  if (!r.ok) throw new Error('Clear error');
-}
-
-async function getSheetsList() {
-  const r = await fetch(`${API_BASE}/${sheetId}?key=${apiKey}`);
-  if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || 'Could not read sheet'); }
-  return (await r.json()).sheets.map(s => s.properties.title);
-}
-
-async function addSheetTab(title) {
-  const r = await fetch(`${API_BASE}/${sheetId}:batchUpdate?key=${apiKey}`,
-    { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }) });
-  if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || 'Add tab error'); }
-}
-
-async function rewriteSheet(tab, rows) {
-  await sheetsClear(tab);
-  if (rows.length) await sheetsAppend(tab, rows);
-}
-
-async function ensureSheetStructure() {
-  const existing = await getSheetsList();
-  const headers = {
-    Tasks: [['id','name','minutes','frequency_days','multiplier']],
-    Users: [['id','name']],
-    Logs:  [['id','task_id','user_id','date','minutes_earned']]
-  };
-  for (const [, name] of Object.entries(TABS)) {
-    if (!existing.includes(name)) {
-      await addSheetTab(name);
-      await sheetsAppend(name, headers[name]);
-    }
-  }
-}
-
-async function loadAllData() {
-  const [tRows, uRows, lRows] = await Promise.all([
-    sheetsGet('Tasks!A:E'), sheetsGet('Users!A:B'), sheetsGet('Logs!A:E')
-  ]);
-  state.tasks = tRows.slice(1).filter(r=>r[0]).map(r=>({
-    id:r[0], name:r[1], minutes:parseFloat(r[2])||0,
-    frequency_days: r[3]?parseInt(r[3]):null, multiplier: r[4]?parseFloat(r[4]):null
-  }));
-  state.users = uRows.slice(1).filter(r=>r[0]).map(r=>({ id:r[0], name:r[1] }));
-  state.logs  = lRows.slice(1).filter(r=>r[0]).map(r=>({
-    id:r[0], task_id:r[1], user_id:r[2], date:r[3], minutes_earned:parseFloat(r[4])||0
-  }));
-}
-
-// ── NAVIGATION ──────────────────────────────────────────────────
-function showPage(name) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   document.querySelector(`[data-page="${name}"]`)?.classList.add('active');
+
+  // Back button: show on non-dashboard pages when there's history
+  const backBtn=document.getElementById('back-btn');
+  if(pageHistory.length>0&&name!=='dashboard'){
+    backBtn.classList.add('visible');
+  }else{
+    backBtn.classList.remove('visible');
+    pageHistory=[];
+  }
+
   if(name==='dashboard') renderDashboard();
   if(name==='priorities') renderPriorities();
   if(name==='settings') renderSettingsPage();
   if(name==='add') setupAddPage();
 }
 
-// ── ADD TASK ────────────────────────────────────────────────────
-function setupAddPage() {
-  document.getElementById('log-date').value = new Date().toISOString().split('T')[0];
-  const freq = {};
-  state.logs.forEach(l=>{ freq[l.task_id]=(freq[l.task_id]||0)+1; });
-  const sorted = [...state.tasks].sort((a,b)=>(freq[b.id]||0)-(freq[a.id]||0));
-  const grid = document.getElementById('task-grid');
-  grid.innerHTML = '';
-  if (!sorted.length) {
-    grid.innerHTML='<p style="color:var(--muted);font-size:12px;grid-column:1/-1;">No tasks yet. Add some in Settings!</p>';
-    return;
+function goBack(){
+  if(pageHistory.length>0){
+    const prev=pageHistory.pop();
+    showPage(prev, false);
+  }else{
+    showPage('dashboard', false);
   }
-  sorted.forEach(t=>{
-    const chip = document.createElement('div');
-    chip.className='task-chip'; chip.dataset.id=t.id;
-    chip.innerHTML=`
-      <div class="task-chip-name">${t.name}</div>
-      <div class="task-chip-meta">${t.minutes} min${t.frequency_days?' · every '+t.frequency_days+'d':''}</div>
-      ${t.multiplier&&t.frequency_days?`<div class="task-chip-multiplier">×${t.multiplier} when overdue</div>`:''}
-    `;
-    chip.onclick=()=>selectTask(t,chip);
-    grid.appendChild(chip);
-  });
-  const ub = document.getElementById('user-btns');
+}
+
+// ─── APPS SCRIPT API ─────────────────────────────────────────────
+async function apiGet(sheet){
+  const url=`${scriptUrl}?action=get&sheet=${encodeURIComponent(sheet)}&sheetId=${sheetId}`;
+  const r=await fetch(url);
+  if(!r.ok) throw new Error('Network error');
+  const d=await r.json();
+  if(d&&d.error) throw new Error(d.error);
+  return d||[];
+}
+
+async function apiAppend(sheet, row){
+  const url=`${scriptUrl}?action=append&sheet=${encodeURIComponent(sheet)}&sheetId=${sheetId}&row=${encodeURIComponent(JSON.stringify(row))}`;
+  const r=await fetch(url);
+  if(!r.ok) throw new Error('Network error');
+  const d=await r.json();
+  if(d&&d.error) throw new Error(d.error);
+  return d;
+}
+
+async function apiRewrite(sheet, rows){
+  const url=`${scriptUrl}?action=rewrite&sheet=${encodeURIComponent(sheet)}&sheetId=${sheetId}&rows=${encodeURIComponent(JSON.stringify(rows))}`;
+  const r=await fetch(url);
+  if(!r.ok) throw new Error('Network error');
+  const d=await r.json();
+  if(d&&d.error) throw new Error(d.error);
+  return d;
+}
+
+async function ensureSheets(){
+  // The Apps Script auto-creates sheets on first access, so we just ensure headers exist
+  for(const sh of ['Tasks','Users','Logs']){
+    const rows=await apiGet(sh);
+    if(!rows||rows.length===0){
+      const headers={
+        Tasks:['id','name','minutes','frequency_days','multiplier'],
+        Users:['id','name'],
+        Logs: ['id','task_id','user_id','date','minutes_earned']
+      };
+      await apiAppend(sh, headers[sh]);
+    }
+  }
+}
+
+async function loadAll(){
+  const [tRows,uRows,lRows]=await Promise.all([apiGet('Tasks'),apiGet('Users'),apiGet('Logs')]);
+  state.tasks=parseRows(tRows,1).map(r=>({
+    id:r[0],name:r[1],minutes:parseFloat(r[2])||0,
+    frequency_days:r[3]?parseInt(r[3]):null, multiplier:r[4]?parseFloat(r[4]):null
+  }));
+  state.users=parseRows(uRows,1).map(r=>({id:r[0],name:r[1]}));
+  state.logs=parseRows(lRows,1).map(r=>({
+    id:r[0],task_id:r[1],user_id:r[2],date:r[3],minutes_earned:parseFloat(r[4])||0
+  }));
+}
+
+function parseRows(rows, skip=0){ return (rows||[]).slice(skip).filter(r=>r&&r[0]); }
+
+// ─── ADD TASK PAGE ────────────────────────────────────────────────
+function setupAddPage(){
+  document.getElementById('log-date').value=new Date().toISOString().split('T')[0];
+  // Sort by frequency of use (most used first)
+  const freq={};
+  state.logs.forEach(l=>{ freq[l.task_id]=(freq[l.task_id]||0)+1; });
+  const sorted=[...state.tasks].sort((a,b)=>(freq[b.id]||0)-(freq[a.id]||0));
+
+  const grid=document.getElementById('task-grid');
+  grid.innerHTML='';
+  if(!sorted.length){
+    grid.innerHTML='<p style="color:var(--muted);font-size:12px;grid-column:1/-1;">No tasks yet — add some in Settings!</p>';
+  }else{
+    sorted.forEach(t=>{
+      const chip=document.createElement('div');
+      chip.className='task-chip'; chip.dataset.id=t.id;
+      chip.innerHTML=`
+        <div class="chip-name">${t.name}</div>
+        <div class="chip-meta">${t.minutes} min${t.frequency_days?' · every '+t.frequency_days+'d':''}</div>
+        ${t.multiplier&&t.frequency_days?`<div class="chip-bonus">×${t.multiplier} when overdue</div>`:''}
+      `;
+      chip.onclick=()=>selectTask(t,chip);
+      grid.appendChild(chip);
+    });
+  }
+
+  const ub=document.getElementById('user-btns');
   ub.innerHTML='';
   state.users.forEach(u=>{
     const btn=document.createElement('button');
-    btn.className='btn btn-secondary'; btn.style.flex='1'; btn.dataset.id=u.id; btn.textContent=u.name;
+    btn.className='btn btn-secondary'; btn.dataset.id=u.id; btn.textContent=u.name;
+    // Pre-select the active user
+    if(u.id===activeUserId){ btn.classList.replace('btn-secondary','btn-primary'); selectedUser=u; }
     btn.onclick=()=>selectUser(u,btn);
     ub.appendChild(btn);
   });
-  selectedTask=null; selectedUser=null;
+
+  selectedTask=null;
+  document.getElementById('selected-info').style.display='none';
 }
 
-function selectTask(task, el) {
+function selectTask(task,el){
   document.querySelectorAll('.task-chip').forEach(c=>c.classList.remove('selected'));
   el.classList.add('selected'); selectedTask=task;
-  document.getElementById('selected-task-info').style.display='block';
-  document.getElementById('sel-task-name').textContent=task.name;
-  const overdue = isOverdue(task);
-  const mins = (task.multiplier&&overdue) ? task.minutes*task.multiplier : task.minutes;
-  document.getElementById('sel-task-time').textContent=`${mins} min earned`;
-  const me = document.getElementById('sel-task-multiplier');
-  if (task.multiplier&&overdue) { me.style.display='inline-block'; me.textContent=`×${task.multiplier} applied!`; }
+  document.getElementById('selected-info').style.display='block';
+  document.getElementById('sel-name').textContent=task.name;
+  const over=isOverdue(task);
+  const mins=(task.multiplier&&over)?task.minutes*task.multiplier:task.minutes;
+  document.getElementById('sel-time').textContent=`${mins} min earned`;
+  const me=document.getElementById('sel-mult');
+  if(task.multiplier&&over){ me.style.display='inline-block'; me.textContent=`×${task.multiplier} applied!`; }
   else me.style.display='none';
 }
 
-function selectUser(user, el) {
+function selectUser(user,el){
   document.querySelectorAll('#user-btns .btn').forEach(b=>{ b.classList.remove('btn-primary'); b.classList.add('btn-secondary'); });
-  el.classList.remove('btn-secondary'); el.classList.add('btn-primary'); selectedUser=user;
+  el.classList.replace('btn-secondary','btn-primary'); selectedUser=user;
 }
 
-function isOverdue(task) {
-  if (!task.frequency_days) return false;
-  const last = state.logs.filter(l=>l.task_id===task.id).sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
-  if (!last) return true;
-  return (Date.now()-new Date(last.date))/86400000 >= task.frequency_days;
+function isOverdue(task){
+  if(!task.frequency_days) return false;
+  const last=state.logs.filter(l=>l.task_id===task.id).sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+  if(!last) return true;
+  return (Date.now()-new Date(last.date))/86400000>=task.frequency_days;
 }
 
-async function submitLog() {
-  if (!selectedTask) { showToast('Select a task first!'); return; }
-  if (!selectedUser) { showToast('Select who did it!'); return; }
-  const dateVal = document.getElementById('log-date').value;
-  if (!dateVal) { showToast('Pick a date!'); return; }
-  const btn = document.getElementById('submit-log-btn');
+async function submitLog(){
+  if(!selectedTask){ showToast('Select a task first!'); return; }
+  if(!selectedUser){ showToast('Select who did it!'); return; }
+  const dateVal=document.getElementById('log-date').value;
+  if(!dateVal){ showToast('Pick a date!'); return; }
+  const btn=document.getElementById('log-btn');
   btn.disabled=true; btn.textContent='Saving…';
-  const overdue = isOverdue(selectedTask);
-  const mins = (selectedTask.multiplier&&overdue) ? selectedTask.minutes*selectedTask.multiplier : selectedTask.minutes;
-  const id = Date.now().toString();
-  try {
-    await sheetsAppend('Logs',[[id,selectedTask.id,selectedUser.id,dateVal,mins]]);
+  const over=isOverdue(selectedTask);
+  const mins=(selectedTask.multiplier&&over)?selectedTask.minutes*selectedTask.multiplier:selectedTask.minutes;
+  const id=Date.now().toString();
+  try{
+    await apiAppend('Logs',[id,selectedTask.id,selectedUser.id,dateVal,mins]);
     state.logs.push({id,task_id:selectedTask.id,user_id:selectedUser.id,date:dateVal,minutes_earned:mins});
     showToast(`✓ ${mins} min for ${selectedUser.name}!`);
-    selectedTask=null; selectedUser=null;
+    selectedTask=null;
     document.querySelectorAll('.task-chip').forEach(c=>c.classList.remove('selected'));
-    document.querySelectorAll('#user-btns .btn').forEach(b=>{ b.classList.remove('btn-primary'); b.classList.add('btn-secondary'); });
-    document.getElementById('selected-task-info').style.display='none';
-  } catch(e) { showToast('Error: '+e.message); }
+    document.getElementById('selected-info').style.display='none';
+  }catch(e){ showToast('Error: '+e.message); }
   btn.disabled=false; btn.textContent='Log Task ✓';
 }
 
-// ── DASHBOARD ───────────────────────────────────────────────────
+// ─── DASHBOARD ───────────────────────────────────────────────────
 const FILTERS=[{l:'7d',d:7},{l:'30d',d:30},{l:'3m',d:90},{l:'6m',d:180},{l:'All',d:null}];
 
-function renderDashboard() {
+function renderDashboard(){
   const bar=document.getElementById('filter-bar');
-  bar.innerHTML='';
-  FILTERS.forEach(f=>{
-    const c=document.createElement('div');
-    c.className='filter-chip'+(currentFilter===f.l?' active':'');
-    c.textContent=f.l;
-    c.onclick=()=>{ currentFilter=f.l; renderDashboard(); };
-    bar.appendChild(c);
-  });
+  bar.innerHTML=FILTERS.map(f=>
+    `<div class="filter-chip${currentFilter===f.l?' active':''}" onclick="setFilter('${f.l}')">${f.l}</div>`
+  ).join('');
+
   const f=FILTERS.find(x=>x.l===currentFilter);
   const cutoff=f.d?new Date(Date.now()-f.d*86400000):null;
   const logs=state.logs.filter(l=>!cutoff||new Date(l.date)>=cutoff);
   const el=document.getElementById('dashboard-content');
-  if (!logs.length) {
-    el.innerHTML='<div class="empty-state"><div class="emoji">📊</div><p>No data for this period.</p></div>'; return;
+
+  if(!logs.length){
+    el.innerHTML='<div class="empty"><div class="ico">📊</div><p>No data for this period.</p></div>'; return;
   }
+
   const totals={};
-  state.users.forEach(u=>{totals[u.id]={name:u.name,minutes:0,count:0};});
-  logs.forEach(l=>{ if(totals[l.user_id]){totals[l.user_id].minutes+=l.minutes_earned;totals[l.user_id].count++;} });
+  state.users.forEach(u=>{ totals[u.id]={name:u.name,minutes:0,count:0}; });
+  logs.forEach(l=>{ if(totals[l.user_id]){ totals[l.user_id].minutes+=l.minutes_earned; totals[l.user_id].count++; } });
   const arr=Object.values(totals).sort((a,b)=>b.minutes-a.minutes);
   const total=arr.reduce((s,u)=>s+u.minutes,0);
 
   let html='';
-  if (arr.length>=2) {
-    const p1=arr[0],p2=arr[1];
-    const p=total>0?Math.round(p1.minutes/total*100):50;
-    html+=`<div class="balance-bar-wrap">
-      <div class="balance-bar-labels">
-        <span style="color:var(--accent)">${p1.name} ${p}%</span>
-        <span style="color:var(--accent2)">${p2.name} ${100-p}%</span>
+  if(arr.length>=2){
+    const p=total>0?Math.round(arr[0].minutes/total*100):50;
+    html+=`<div class="bal-wrap">
+      <div class="bal-labels">
+        <span style="color:var(--accent)">${arr[0].name} ${p}%</span>
+        <span style="color:var(--accent2)">${arr[1].name} ${100-p}%</span>
       </div>
-      <div class="balance-bar-track">
-        <div class="balance-bar-fill bar-p1" style="width:${p}%"></div>
-        <div class="balance-bar-fill bar-p2" style="width:${100-p}%"></div>
+      <div class="bal-track">
+        <div class="bal-fill bal-a" style="width:${p}%"></div>
+        <div class="bal-fill bal-b" style="width:${100-p}%"></div>
       </div>
     </div>`;
   }
 
   html+='<div class="kpi-grid">';
   arr.forEach((u,i)=>{
-    html+=`<div class="kpi-card${i===0?' accent':''}">
+    html+=`<div class="kpi-card${i===0?' hi':''}">
       <div class="kpi-label">${u.name}</div>
       <div class="kpi-value">${(u.minutes/60).toFixed(1)}h</div>
       <div class="kpi-sub">${u.count} tasks</div>
@@ -835,39 +918,42 @@ function renderDashboard() {
   });
   html+='</div>';
 
-  // Task breakdown
   const tc={};
   logs.forEach(l=>{
     const t=state.tasks.find(x=>x.id===l.task_id); if(!t)return;
-    if(!tc[t.id])tc[t.id]={name:t.name,byUser:{}};
-    tc[t.id].byUser[l.user_id]=(tc[t.id].byUser[l.user_id]||0)+1;
+    if(!tc[t.id])tc[t.id]={name:t.name,by:{}};
+    tc[t.id].by[l.user_id]=(tc[t.id].by[l.user_id]||0)+1;
   });
   const rows=Object.values(tc).sort((a,b)=>{
-    return Object.values(b.byUser).reduce((s,v)=>s+v,0)-Object.values(a.byUser).reduce((s,v)=>s+v,0);
+    const sa=Object.values(a.by).reduce((s,v)=>s+v,0);
+    const sb=Object.values(b.by).reduce((s,v)=>s+v,0);
+    return sb-sa;
   });
 
-  html+=`<div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;margin:20px 0 10px;">Task Breakdown</div>`;
+  html+=`<div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;margin:18px 0 9px;">Task Breakdown</div>`;
   html+='<div class="stat-list">';
   rows.forEach(t=>{
-    const entries=Object.entries(t.byUser).map(([uid,cnt])=>{
+    const entries=Object.entries(t.by).map(([uid,cnt])=>{
       const u=state.users.find(u=>u.id===uid); return `${u?u.name:'?'}: ${cnt}×`;
     }).join(' · ');
-    const tot=Object.values(t.byUser).reduce((s,v)=>s+v,0);
+    const tot=Object.values(t.by).reduce((s,v)=>s+v,0);
     html+=`<div class="stat-row">
-      <div><div class="stat-row-name">${t.name}</div><div class="stat-row-sub">${entries}</div></div>
-      <div class="stat-row-right">${tot}×</div>
+      <div><div class="stat-name">${t.name}</div><div class="stat-sub">${entries}</div></div>
+      <div class="stat-num">${tot}×</div>
     </div>`;
   });
   html+='</div>';
   el.innerHTML=html;
 }
 
-// ── PRIORITIES ──────────────────────────────────────────────────
-function renderPriorities() {
+function setFilter(l){ currentFilter=l; renderDashboard(); }
+
+// ─── PRIORITIES ──────────────────────────────────────────────────
+function renderPriorities(){
   const el=document.getElementById('priorities-list');
   const recurring=state.tasks.filter(t=>t.frequency_days);
-  if (!recurring.length) {
-    el.innerHTML='<div class="empty-state"><div class="emoji">✅</div><p>No recurring tasks yet.<br/>Add frequency in Settings.</p></div>'; return;
+  if(!recurring.length){
+    el.innerHTML='<div class="empty"><div class="ico">✅</div><p>No recurring tasks yet.<br/>Add a frequency to tasks in Settings.</p></div>'; return;
   }
   const now=Date.now();
   const items=recurring.map(task=>{
@@ -878,155 +964,192 @@ function renderPriorities() {
     const progress=Math.min(daysSince/task.frequency_days,1);
     return {task,daysLeft,progress,isOverdue:daysLeft<0,isDueSoon:daysLeft>=0&&daysLeft<=2,lastDate};
   }).sort((a,b)=>{
-    if(a.isOverdue&&!b.isOverdue)return -1; if(!a.isOverdue&&b.isOverdue)return 1; return a.daysLeft-b.daysLeft;
+    if(a.isOverdue&&!b.isOverdue)return -1;
+    if(!a.isOverdue&&b.isOverdue)return 1;
+    return a.daysLeft-b.daysLeft;
   });
 
   el.innerHTML=items.map(({task,daysLeft,progress,isOverdue,isDueSoon,lastDate})=>{
     const sc=isOverdue?'overdue':isDueSoon?'due-soon':'ok';
-    const badge=isOverdue?`${Math.abs(Math.round(daysLeft))}d overdue`:isDueSoon?(daysLeft<1?'Due today':`Due in ${Math.ceil(daysLeft)}d`):`${Math.ceil(daysLeft)}d left`;
-    const lastText=lastDate?`Last: ${lastDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`:'Never done';
+    const badge=isOverdue?`${Math.abs(Math.round(daysLeft))}d overdue`
+      :isDueSoon?(daysLeft<1?'Due today':`Due in ${Math.ceil(daysLeft)}d`)
+      :`${Math.ceil(daysLeft)}d left`;
+    const lastTxt=lastDate?`Last: ${lastDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`:'Never done';
     const color=isOverdue?'var(--danger)':isDueSoon?'var(--accent2)':'var(--accent)';
     const mult=task.multiplier&&isOverdue?`<span style="color:var(--accent2);font-size:10px;">×${task.multiplier} bonus active!</span>`:'';
-    return `<div class="priority-card ${sc}">
-      <div class="card-row">
+    return `<div class="pri-card ${sc}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
         <div>
-          <div class="card-title">${task.name}</div>
-          <div class="card-meta">${task.minutes} min · every ${task.frequency_days}d · ${lastText}</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;">${task.name}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">${task.minutes} min · every ${task.frequency_days}d · ${lastTxt}</div>
           ${mult}
         </div>
-        <span class="priority-badge ${sc}">${badge}</span>
+        <span class="pri-badge ${sc}">${badge}</span>
       </div>
-      <div class="progress-bar-track">
-        <div class="progress-bar-fill" style="width:${Math.round(progress*100)}%;background:${color};"></div>
-      </div>
+      <div class="prog-track"><div class="prog-fill" style="width:${Math.round(progress*100)}%;background:${color};"></div></div>
     </div>`;
   }).join('');
 }
 
-// ── SETTINGS ────────────────────────────────────────────────────
-function renderSettingsPage() {
-  // Active user in settings
-  const activeUser = state.users.find(u => u.id === activeUserId);
-  document.getElementById('active-user-setting').innerHTML = activeUser
-    ? `<div style="display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;">
-        <span class="active-user-dot"></span>
-        <span style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;">${activeUser.name}</span>
-        <span style="font-size:11px;color:var(--muted);margin-left:auto;">this device</span>
-       </div>`
-    : '<p style="font-size:12px;color:var(--muted);">No user selected.</p>';
+// ─── SETTINGS ────────────────────────────────────────────────────
+function renderSettingsPage(){
+  updateThemeUI();
 
-  // Sync theme toggle
-  updateThemeToggleUI();
+  const au=state.users.find(u=>u.id===activeUserId);
+  document.getElementById('active-user-display').innerHTML=au
+    ?`<div style="display:flex;align-items:center;gap:9px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;">
+        <span class="user-dot"></span>
+        <span style="font-family:'Syne',sans-serif;font-weight:700;">${au.name}</span>
+        <span style="font-size:10px;color:var(--muted);margin-left:auto;">this device</span>
+       </div>`
+    :'<p style="font-size:12px;color:var(--muted);">No user selected.</p>';
 
   document.getElementById('users-list').innerHTML=state.users.length
-    ? state.users.map(u=>`<span class="user-chip">${u.name}<button class="remove-btn" onclick="removeUser('${u.id}')">×</button></span>`).join('')
-    : '<p style="font-size:12px;color:var(--muted);">No users yet.</p>';
+    ?state.users.map(u=>`<span class="user-chip">${u.name}<button class="remove-btn" onclick="removeUser('${u.id}')">×</button></span>`).join('')
+    :'<p style="font-size:12px;color:var(--muted);">No users yet.</p>';
 
-  document.getElementById('tasks-settings-list').innerHTML=state.tasks.length
-    ? state.tasks.map(t=>`<div class="card">
-        <div class="card-row">
+  document.getElementById('tasks-list').innerHTML=state.tasks.length
+    ?state.tasks.map(t=>`<div class="list-card mb-0" style="margin-bottom:8px;">
+        <div class="list-card-row">
           <div>
-            <div class="card-title">${t.name}</div>
-            <div class="card-meta">${t.minutes} min${t.frequency_days?` · every ${t.frequency_days}d`:''}${t.multiplier?` · ×${t.multiplier} overdue`:''}</div>
+            <div class="list-card-title">${t.name}</div>
+            <div class="list-card-meta">${t.minutes} min${t.frequency_days?` · every ${t.frequency_days}d`:''}${t.multiplier?` · ×${t.multiplier} overdue`:''}</div>
           </div>
-          <div style="display:flex;gap:6px;">
+          <div style="display:flex;gap:6px;flex-shrink:0;">
             <button class="btn btn-secondary btn-sm" onclick="openTaskModal('${t.id}')">Edit</button>
             <button class="btn btn-danger btn-sm" onclick="removeTask('${t.id}')">✕</button>
           </div>
         </div>
       </div>`).join('')
-    : '<p style="font-size:12px;color:var(--muted);">No tasks yet.</p>';
+    :'<p style="font-size:12px;color:var(--muted);">No tasks yet.</p>';
 }
 
-async function addUser() {
-  const input=document.getElementById('new-user-input');
-  const name=input.value.trim(); if(!name)return;
+async function addUser(){
+  const inp=document.getElementById('new-user-input');
+  const name=inp.value.trim(); if(!name)return;
   const id=Date.now().toString();
-  try { await sheetsAppend('Users',[[id,name]]); state.users.push({id,name}); input.value=''; renderSettingsPage(); showToast('User added!'); }
-  catch(e){showToast('Error: '+e.message);}
+  try{
+    await apiAppend('Users',[id,name]);
+    state.users.push({id,name}); inp.value='';
+    renderSettingsPage(); setupAddPage();
+    showToast('User added!');
+  }catch(e){ showToast('Error: '+e.message); }
 }
 
-async function removeUser(id) {
-  if(!confirm('Remove this user?'))return;
+async function removeUser(id){
+  if(!confirm('Remove this user?')) return;
   state.users=state.users.filter(u=>u.id!==id);
-  await rewriteSheet('Users',[['id','name'],...state.users.map(u=>[u.id,u.name])]);
+  await apiRewrite('Users',[['id','name'],...state.users.map(u=>[u.id,u.name])]);
   renderSettingsPage(); showToast('User removed.');
 }
 
-async function removeTask(id) {
-  if(!confirm('Remove this task? Logs will be kept.'))return;
+async function removeTask(id){
+  if(!confirm('Remove this task? Logs will be kept.')) return;
   state.tasks=state.tasks.filter(t=>t.id!==id);
-  await rewriteSheet('Tasks',[['id','name','minutes','frequency_days','multiplier'],...state.tasks.map(t=>[t.id,t.name,t.minutes,t.frequency_days||'',t.multiplier||''])]);
+  await apiRewrite('Tasks',[
+    ['id','name','minutes','frequency_days','multiplier'],
+    ...state.tasks.map(t=>[t.id,t.name,t.minutes,t.frequency_days||'',t.multiplier||''])
+  ]);
   renderSettingsPage(); setupAddPage(); showToast('Task removed.');
 }
 
-function openTaskModal(taskId) {
+function openTaskModal(taskId){
   editingTaskId=taskId||null;
-  document.getElementById('task-modal-title').textContent=taskId?'Edit Task':'Add Task';
+  document.getElementById('modal-title').textContent=taskId?'Edit Task':'Add Task';
   if(taskId){
     const t=state.tasks.find(t=>t.id===taskId);
-    document.getElementById('task-name-input').value=t.name;
-    document.getElementById('task-time-input').value=t.minutes;
-    document.getElementById('task-freq-input').value=t.frequency_days||'';
-    document.getElementById('task-multiplier-input').value=t.multiplier||'';
-  } else {
-    ['task-name-input','task-time-input','task-freq-input','task-multiplier-input'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('t-name').value=t.name;
+    document.getElementById('t-mins').value=t.minutes;
+    document.getElementById('t-freq').value=t.frequency_days||'';
+    document.getElementById('t-mult').value=t.multiplier||'';
+  }else{
+    ['t-name','t-mins','t-freq','t-mult'].forEach(id=>document.getElementById(id).value='');
   }
   document.getElementById('task-modal').classList.add('open');
 }
 
-function closeTaskModal() { document.getElementById('task-modal').classList.remove('open'); editingTaskId=null; }
+function closeTaskModal(){ document.getElementById('task-modal').classList.remove('open'); editingTaskId=null; }
 
-async function saveTask() {
-  const name=document.getElementById('task-name-input').value.trim();
-  const minutes=parseFloat(document.getElementById('task-time-input').value);
-  const freq=document.getElementById('task-freq-input').value.trim();
-  const mult=document.getElementById('task-multiplier-input').value.trim();
-  if(!name||!minutes){showToast('Name and time are required.');return;}
+async function saveTask(){
+  const name=document.getElementById('t-name').value.trim();
+  const mins=parseFloat(document.getElementById('t-mins').value);
+  const freq=document.getElementById('t-freq').value.trim();
+  const mult=document.getElementById('t-mult').value.trim();
+  if(!name||!mins){ showToast('Name and time are required.'); return; }
   if(editingTaskId){
     const idx=state.tasks.findIndex(t=>t.id===editingTaskId);
-    state.tasks[idx]={id:editingTaskId,name,minutes,frequency_days:freq?parseInt(freq):null,multiplier:mult?parseFloat(mult):null};
-    await rewriteSheet('Tasks',[['id','name','minutes','frequency_days','multiplier'],...state.tasks.map(t=>[t.id,t.name,t.minutes,t.frequency_days||'',t.multiplier||''])]);
+    state.tasks[idx]={id:editingTaskId,name,minutes:mins,
+      frequency_days:freq?parseInt(freq):null, multiplier:mult?parseFloat(mult):null};
+    await apiRewrite('Tasks',[
+      ['id','name','minutes','frequency_days','multiplier'],
+      ...state.tasks.map(t=>[t.id,t.name,t.minutes,t.frequency_days||'',t.multiplier||''])
+    ]);
     showToast('Task updated!');
-  } else {
+  }else{
     const id=Date.now().toString();
-    await sheetsAppend('Tasks',[[id,name,minutes,freq||'',mult||'']]);
-    state.tasks.push({id,name,minutes,frequency_days:freq?parseInt(freq):null,multiplier:mult?parseFloat(mult):null});
+    await apiAppend('Tasks',[id,name,mins,freq||'',mult||'']);
+    state.tasks.push({id,name,minutes:mins,frequency_days:freq?parseInt(freq):null,multiplier:mult?parseFloat(mult):null});
     showToast('Task added!');
   }
   closeTaskModal(); renderSettingsPage(); setupAddPage();
 }
 
-// ── THEME ────────────────────────────────────────────────────────
-function themeKey() {
-  // Per-user key so each person on this device has their own preference
-  return activeUserId ? `homescore_theme_${activeUserId}` : 'homescore_theme_default';
+// ─── THEME ───────────────────────────────────────────────────────
+function applyStoredTheme(){
+  const t=localStorage.getItem(themeKey());
+  document.documentElement.setAttribute('data-theme', t==='light'?'light':'dark');
+}
+function updateThemeUI(){
+  const isLight=document.documentElement.getAttribute('data-theme')==='light';
+  const tog=document.getElementById('theme-toggle');
+  const lbl=document.getElementById('theme-label');
+  if(tog) tog.checked=isLight;
+  if(lbl) lbl.textContent=isLight?'☀️ Light mode':'🌙 Dark mode';
+}
+function toggleTheme(){
+  const isLight=document.documentElement.getAttribute('data-theme')==='light';
+  const nxt=isLight?'dark':'light';
+  document.documentElement.setAttribute('data-theme',nxt);
+  localStorage.setItem(themeKey(),nxt);
+  updateThemeUI();
 }
 
-function applyStoredTheme() {
-  const stored = localStorage.getItem(themeKey());
-  // Default: dark
-  const isLight = stored === 'light';
-  document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+// ─── SETUP GUIDE ─────────────────────────────────────────────────
+function showSetupGuide(){
+  const g=document.getElementById('setup-guide');
+  g.style.display=g.style.display==='none'?'flex':'none';
 }
 
-function updateThemeToggleUI() {
-  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-  const toggle = document.getElementById('theme-toggle');
-  const label = document.getElementById('theme-label');
-  if (toggle) toggle.checked = isLight;
-  if (label) label.textContent = isLight ? '☀️ Light mode' : '🌙 Dark mode';
+const SCRIPT_CODE=`function doGet(e){return handle(e)}
+function doPost(e){return handle(e)}
+function handle(e){
+  try{
+    var p=e.parameter,ss=SpreadsheetApp.getActiveSpreadsheet();
+    var sh=ss.getSheetByName(p.sheet)||ss.insertSheet(p.sheet);
+    if(p.action==='get'){
+      return out(sh.getDataRange().getValues());
+    }else if(p.action==='append'){
+      sh.appendRow(JSON.parse(p.row));return out('ok');
+    }else if(p.action==='rewrite'){
+      sh.clearContents();
+      var rows=JSON.parse(p.rows);
+      if(rows.length)sh.getRange(1,1,rows.length,rows[0].length).setValues(rows);
+      return out('ok');
+    }
+  }catch(err){return out({error:err.message})}
+}
+function out(d){
+  return ContentService.createTextOutput(JSON.stringify(d))
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
+
+function copyScript(){
+  navigator.clipboard.writeText(SCRIPT_CODE).then(()=>showToast('Script copied!'))
+    .catch(()=>{ prompt('Copy this script:',SCRIPT_CODE); });
 }
 
-function toggleTheme() {
-  const isCurrentlyLight = document.documentElement.getAttribute('data-theme') === 'light';
-  const newTheme = isCurrentlyLight ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', newTheme);
-  localStorage.setItem(themeKey(), newTheme);
-  updateThemeToggleUI();
-}
-
-function showToast(msg) {
+// ─── TOAST ───────────────────────────────────────────────────────
+function showToast(msg){
   const t=document.getElementById('toast');
   t.textContent=msg; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),2500);
