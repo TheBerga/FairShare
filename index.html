@@ -998,20 +998,6 @@ function selectTask(task,el){
     me.style.display='none';
   }
 }
-  document.getElementById('selected-info').style.display='block';
-  document.getElementById('sel-name').textContent=(task.emoji||'🏠')+' '+task.name;
-  const over=isOverdue(task);
-  const mins=(task.multiplier&&over)?task.minutes*task.multiplier:task.minutes;
-  document.getElementById('sel-time').textContent=`${mins} min earned`;
-  const me=document.getElementById('sel-mult');
-  // Only show multiplier tag if task HAS a multiplier AND it's currently overdue
-  if(task.multiplier && task.multiplier>1 && over){
-    me.style.display='inline-block';
-    me.textContent=`×${task.multiplier} applied!`;
-  } else {
-    me.style.display='none';
-  }
-}
 
 function selectUser(user,el){
   document.querySelectorAll('#user-btns .btn').forEach(b=>{ b.classList.remove('btn-primary'); b.classList.add('btn-secondary'); });
