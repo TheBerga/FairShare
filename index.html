@@ -417,7 +417,7 @@
 </div>
 
 <!-- AUTH SCREEN -->
-<div id="auth-screen" class="screen">
+<div id="auth-screen" style="display:none;min-height:100vh;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px;gap:28px;">
   <div class="logo">Home<span>Score</span></div>
   <div class="card">
     <h2>Connect your Sheet</h2>
@@ -477,7 +477,7 @@
 </div>
 
 <!-- USER SELECT SCREEN -->
-<div id="user-select-screen" class="screen">
+<div id="user-select-screen" style="display:none;min-height:100vh;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px;gap:28px;">
   <div class="logo">Home<span>Score</span></div>
   <div class="card">
     <h2>Who are you?</h2>
@@ -715,60 +715,84 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   applyStoredTheme();
   const sid=localStorage.getItem(K_SHEET);
   const surl=localStorage.getItem(K_SCRIPT);
-  if(sid&&surl){ sheetId=sid; scriptUrl=surl; await initApp(); }
-  else showScreen('auth-screen');
+  if(sid&&surl){
+    sheetId=sid; scriptUrl=surl;
+    initApp();
+  } else {
+    showAuthScreen();
+  }
 });
+
+function showAuthScreen(){
+  document.getElementById('loading-overlay').style.display='none';
+  document.getElementById('auth-screen').style.display='flex';
+  document.getElementById('auth-screen').style.flexDirection='column';
+  document.getElementById('user-select-screen').style.display='none';
+  document.getElementById('app').style.display='none';
+}
 
 function showScreen(id){
   document.getElementById('loading-overlay').style.display='none';
-  ['auth-screen','user-select-screen','app'].forEach(s=>{
-    const el=document.getElementById(s);
-    if(s==='app'){ el.style.display=(s===id?'flex':'none'); }
-    else { el.classList.toggle('visible', s===id); }
-  });
+  document.getElementById('auth-screen').style.display=(id==='auth-screen'?'flex':'none');
+  document.getElementById('user-select-screen').style.display=(id==='user-select-screen'?'flex':'none');
+  document.getElementById('app').style.display=(id==='app'?'flex':'none');
+  if(id==='app') document.getElementById('app').style.flexDirection='column';
 }
 
-async function connectSheet(){
-  const sid=document.getElementById('inp-sheet-id').value.trim();
-  const surl=document.getElementById('inp-script-url').value.trim();
-  if(!sid){ showToast('Enter your Sheet ID'); return; }
-  if(!surl){ showToast('Enter your Apps Script URL'); return; }
-  sheetId=sid; scriptUrl=surl;
-  localStorage.setItem(K_SHEET,sid); localStorage.setItem(K_SCRIPT,surl);
-  await initApp();
+function setLoadingText(msg){
+  document.getElementById('loading-text').textContent=msg;
 }
 
-async function initApp(){
-  document.getElementById('loading-overlay').style.display='flex';
-  document.getElementById('loading-text').textContent='Connecting…';
-  // Clear any previous error
+function showLoadError(msg){
+  setLoadingText('Could not connect');
   const prev=document.getElementById('load-error');
   if(prev) prev.remove();
+  const d=document.createElement('div');
+  d.id='load-error';
+  d.style.cssText='max-width:300px;text-align:center;display:flex;flex-direction:column;gap:10px;margin-top:4px;';
+  d.innerHTML=`
+    <div style="font-size:12px;color:#f05252;background:rgba(240,82,82,.1);border:1px solid rgba(240,82,82,.3);border-radius:10px;padding:12px;line-height:1.6;">${msg}</div>
+    <button onclick="initApp()" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:DM Mono,monospace;font-size:12px;cursor:pointer;">↺ Retry</button>
+    <button onclick="forceLogout()" style="padding:6px;border:none;background:none;color:var(--muted);font-family:DM Mono,monospace;font-size:11px;cursor:pointer;text-decoration:underline;">Reset credentials</button>
+  `;
+  document.getElementById('loading-overlay').appendChild(d);
+}
 
-  try{
-    await loadAll();
-    document.getElementById('sheet-id-display').textContent=sheetId.substring(0,14)+'…';
-    const savedUid=localStorage.getItem(K_USER);
-    const savedExists=savedUid&&state.users.find(u=>u.id===savedUid);
-    if(savedExists){
-      launchApp(savedUid);
-    } else if(state.users.length===0){
-      launchApp(null);
-    } else {
-      showUserSelect();
-    }
-  }catch(e){
-    document.getElementById('loading-text').textContent='Connection failed';
-    const errDiv=document.createElement('div');
-    errDiv.id='load-error';
-    errDiv.style.cssText='max-width:300px;text-align:center;display:flex;flex-direction:column;gap:10px;margin-top:8px;';
-    errDiv.innerHTML=`
-      <p style="font-size:12px;color:var(--muted);line-height:1.6;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;">${e.message}</p>
-      <button class="btn btn-secondary" style="font-size:12px;" onclick="initApp()">↺ Retry</button>
-      <button class="btn btn-sm" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;" onclick="forceLogout()">Wrong credentials? Reset</button>
-    `;
-    document.getElementById('loading-overlay').appendChild(errDiv);
-  }
+function connectSheet(){
+  const sid=document.getElementById('inp-sheet-id').value.trim();
+  const surl=document.getElementById('inp-script-url').value.trim();
+  if(!sid){ alert('Please enter your Sheet ID'); return; }
+  if(!surl){ alert('Please enter your Apps Script URL'); return; }
+  sheetId=sid; scriptUrl=surl;
+  localStorage.setItem(K_SHEET,sid);
+  localStorage.setItem(K_SCRIPT,surl);
+  initApp();
+}
+
+function initApp(){
+  document.getElementById('loading-overlay').style.display='flex';
+  document.getElementById('auth-screen').style.display='none';
+  document.getElementById('user-select-screen').style.display='none';
+  document.getElementById('app').style.display='none';
+  const prev=document.getElementById('load-error');
+  if(prev) prev.remove();
+  setLoadingText('Connecting…');
+  loadAll()
+    .then(()=>{
+      document.getElementById('sheet-id-display').textContent=sheetId.substring(0,14)+'…';
+      const savedUid=localStorage.getItem(K_USER);
+      const savedExists=savedUid&&state.users.find(u=>u.id===savedUid);
+      if(savedExists){
+        launchApp(savedUid);
+      } else if(state.users.length===0){
+        launchApp(null);
+      } else {
+        showUserSelect();
+      }
+    })
+    .catch(e=>{
+      showLoadError(e.message||'Unknown error');
+    });
 }
 
 function forceLogout(){
@@ -788,14 +812,23 @@ function launchApp(uid){
   }else{
     document.getElementById('topbar-sub').style.display='none';
   }
-  showScreen('app');
+  document.getElementById('loading-overlay').style.display='none';
+  document.getElementById('auth-screen').style.display='none';
+  document.getElementById('user-select-screen').style.display='none';
+  const app=document.getElementById('app');
+  app.style.display='flex';
+  app.style.flexDirection='column';
+  app.style.minHeight='100vh';
   pageHistory=[];
   showPage('dashboard');
   renderSettingsPage();
 }
 
 function showUserSelect(){
-  showScreen('user-select-screen');
+  document.getElementById('loading-overlay').style.display='none';
+  document.getElementById('auth-screen').style.display='none';
+  document.getElementById('app').style.display='none';
+  document.getElementById('user-select-screen').style.display='flex';
   const list=document.getElementById('user-pick-list');
   list.innerHTML=state.users.map(u=>
     `<button class="user-pick-btn" onclick="launchApp('${u.id}')">${u.name}</button>`
@@ -810,8 +843,7 @@ function switchUser(){
 
 function logout(){
   if(!confirm('Disconnect from this sheet?')) return;
-  [K_SHEET,K_SCRIPT,K_USER].forEach(k=>localStorage.removeItem(k));
-  location.reload();
+  forceLogout();
 }
 
 // ─── NAVIGATION ──────────────────────────────────────────────────
