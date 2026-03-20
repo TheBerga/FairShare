@@ -13,6 +13,7 @@
   })();
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   /* ── TOKENS ── */
   :root {
@@ -342,6 +343,63 @@
   .divider { height: 1px; background: var(--border); margin: 14px 0; }
   .mt-2 { margin-top: 8px; }
   .mb-0 { margin-bottom: 0 !important; }
+
+  /* ── EMOJI PICKER ── */
+  .emoji-grid {
+    display: grid; grid-template-columns: repeat(8,1fr); gap: 4px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 8px; margin-top: 4px;
+  }
+  .emoji-opt {
+    font-size: 20px; text-align: center; padding: 4px; border-radius: 6px;
+    cursor: pointer; transition: background .1s; line-height: 1.4;
+  }
+  .emoji-opt:hover, .emoji-opt.selected { background: var(--border); }
+  .emoji-preview {
+    font-size: 24px; width: 44px; height: 44px; display: flex; align-items: center;
+    justify-content: center; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); cursor: pointer; flex-shrink: 0;
+  }
+
+  /* ── COLOR PICKER ── */
+  .color-swatches { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .color-swatch {
+    width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+    border: 2px solid transparent; transition: transform .15s, border-color .15s;
+    flex-shrink: 0;
+  }
+  .color-swatch.selected { border-color: var(--text); transform: scale(1.15); }
+
+  /* ── LOG ENTRY ACTIONS ── */
+  .log-entry-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 0; border-bottom: 1px solid var(--border); gap: 8px;
+  }
+  .log-entry-row:last-child { border-bottom: none; }
+  .log-entry-left { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+  .log-entry-name { font-size: 13px; font-weight: 500; }
+  .log-entry-meta { font-size: 10px; color: var(--muted); }
+  .log-entry-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+  /* ── CHARTS ── */
+  .chart-section { margin-bottom: 20px; }
+  .chart-title { font-family:'Syne',sans-serif; font-size:14px; font-weight:700; margin-bottom:10px; }
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+    margin-bottom: 10px;
+  }
+  .chart-wrap { position: relative; height: 200px; }
+  .chart-wrap-tall { position: relative; height: 240px; }
+
+  /* optimistic save indicator */
+  .saving-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 10px; color: var(--muted); padding: 3px 8px;
+    background: var(--surface2); border-radius: 10px;
+    animation: pulse 1.2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 </style>
 </head>
 <body>
@@ -567,9 +625,20 @@
       <div class="modal-title" id="modal-title">Add Task</div>
       <button class="modal-close" onclick="closeTaskModal()">✕</button>
     </div>
-    <div class="field" style="margin-bottom:12px;">
-      <label>Task Name</label>
-      <input type="text" id="t-name" placeholder="e.g. Clean bathroom"/>
+    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px;">
+      <div>
+        <div class="field" style="margin-bottom:0;">
+          <label>Emoji</label>
+          <div class="emoji-preview" id="emoji-preview" onclick="toggleEmojiPicker()">🏠</div>
+        </div>
+      </div>
+      <div class="field" style="flex:1;">
+        <label>Task Name</label>
+        <input type="text" id="t-name" placeholder="e.g. Clean bathroom"/>
+      </div>
+    </div>
+    <div id="emoji-picker" style="display:none;margin-bottom:12px;">
+      <div class="emoji-grid" id="emoji-grid"></div>
     </div>
     <div class="row" style="margin-bottom:12px;">
       <div class="field">
@@ -589,6 +658,17 @@
   </div>
 </div>
 
+<!-- LOG ENTRY MODAL -->
+<div class="modal-overlay" id="log-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="log-modal-title">Log Entries</div>
+      <button class="modal-close" onclick="closeLogModal()">✕</button>
+    </div>
+    <div id="log-modal-content"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -597,6 +677,10 @@ const K_SHEET   = 'homescore_sheet_id';
 const K_SCRIPT  = 'homescore_script_url';
 const K_USER    = 'homescore_active_user';
 const themeKey  = () => activeUserId ? `homescore_theme_${activeUserId}` : 'homescore_theme_default';
+const colorKey  = (uid) => `homescore_color_${uid}`;
+
+const USER_PALETTE = ['#4f9cf9','#f97316','#a78bfa','#34d399','#f472b6','#facc15','#38bdf8','#fb7185'];
+const TASK_EMOJIS  = ['🏠','🍽️','🧹','🧺','🛒','🚿','🛁','🪣','🧽','🪴','🐕','🐈','🗑️','🧴','🪥','🛏️','🪟','🚪','💡','🔧','🌿','🍳','🥗','☕','📦','🧊','🌀','🪵','🧻','🧼','🪒','🌸','🪑','🖥️','📚','🎮','🎨','🎵','🏋️','🚗'];
 
 // ─── STATE ───────────────────────────────────────────────────────
 let sheetId='', scriptUrl='';
@@ -605,6 +689,18 @@ let selectedTask=null, selectedUser=null;
 let currentFilter='30d', editingTaskId=null;
 let activeUserId=null;
 let pageHistory=[];
+let selectedEmoji='🏠';
+
+// user color helper — reads from localStorage, falls back to palette index
+function userColor(uid){
+  const saved=localStorage.getItem(colorKey(uid));
+  if(saved) return saved;
+  const idx=state.users.findIndex(u=>u.id===uid);
+  return USER_PALETTE[idx>=0?idx%USER_PALETTE.length:0];
+}
+function setUserColor(uid,color){
+  localStorage.setItem(colorKey(uid),color);
+}
 
 // ─── BOOT ────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async ()=>{
@@ -643,8 +739,16 @@ async function initApp(){
     document.getElementById('sheet-id-display').textContent=sheetId.substring(0,14)+'…';
     const savedUid=localStorage.getItem(K_USER);
     const savedExists=savedUid&&state.users.find(u=>u.id===savedUid);
-    if(state.users.length===0||savedExists) launchApp(savedUid||null);
-    else showUserSelect();
+    if(savedExists){
+      // Remember the user — go straight to app, no selector
+      launchApp(savedUid);
+    } else if(state.users.length===0){
+      // No users yet — go to app, prompt to add users in settings
+      launchApp(null);
+    } else {
+      // New device — ask who they are (one time only)
+      showUserSelect();
+    }
   }catch(e){
     document.getElementById('loading-overlay').style.display='none';
     alert('Connection failed:\n'+e.message+'\n\nCheck your Sheet ID and Apps Script URL.');
@@ -660,6 +764,7 @@ function launchApp(uid){
   if(u){
     document.getElementById('topbar-user').textContent=u.name;
     document.getElementById('topbar-sub').style.display='flex';
+    document.querySelector('.topbar .user-dot').style.background=userColor(uid);
   }else{
     document.getElementById('topbar-sub').style.display='none';
   }
@@ -726,57 +831,61 @@ function goBack(){
 }
 
 // ─── APPS SCRIPT API ─────────────────────────────────────────────
-async function apiGet(sheet){
-  const url=`${scriptUrl}?action=get&sheet=${encodeURIComponent(sheet)}&sheetId=${sheetId}`;
-  const r=await fetch(url);
-  if(!r.ok) throw new Error('Network error');
-  const d=await r.json();
-  if(d&&d.error) throw new Error(d.error);
-  return d||[];
-}
+// Single GET: fetches all 3 sheets in one round-trip via ?action=getAll
+// Writes are fire-and-forget (optimistic) — UI updates instantly, sync happens in background
 
-async function apiAppend(sheet, row){
-  const url=`${scriptUrl}?action=append&sheet=${encodeURIComponent(sheet)}&sheetId=${sheetId}&row=${encodeURIComponent(JSON.stringify(row))}`;
+async function apiFetch(params){
+  const url=scriptUrl+'?'+new URLSearchParams({sheetId,...params}).toString();
   const r=await fetch(url);
-  if(!r.ok) throw new Error('Network error');
+  if(!r.ok) throw new Error('Network error (HTTP '+r.status+')');
   const d=await r.json();
   if(d&&d.error) throw new Error(d.error);
   return d;
 }
 
-async function apiRewrite(sheet, rows){
-  const url=`${scriptUrl}?action=rewrite&sheet=${encodeURIComponent(sheet)}&sheetId=${sheetId}&rows=${encodeURIComponent(JSON.stringify(rows))}`;
-  const r=await fetch(url);
-  if(!r.ok) throw new Error('Network error');
-  const d=await r.json();
-  if(d&&d.error) throw new Error(d.error);
-  return d;
+async function apiGetAll(){
+  return apiFetch({action:'getAll'});
+}
+
+// Optimistic write: update UI immediately, sync in background
+function apiAppend(sheet, row){
+  apiFetch({action:'append', sheet, row:JSON.stringify(row)})
+    .catch(e=>console.warn('Sync error (append):', e.message));
+}
+
+function apiRewrite(sheet, rows){
+  apiFetch({action:'rewrite', sheet, rows:JSON.stringify(rows)})
+    .catch(e=>console.warn('Sync error (rewrite):', e.message));
 }
 
 async function ensureSheets(){
-  // The Apps Script auto-creates sheets on first access, so we just ensure headers exist
-  for(const sh of ['Tasks','Users','Logs']){
-    const rows=await apiGet(sh);
-    if(!rows||rows.length===0){
-      const headers={
-        Tasks:['id','name','minutes','frequency_days','multiplier'],
-        Users:['id','name'],
-        Logs: ['id','task_id','user_id','date','minutes_earned']
-      };
-      await apiAppend(sh, headers[sh]);
-    }
-  }
+  // handled server-side in the new getAll action
 }
 
 async function loadAll(){
-  const [tRows,uRows,lRows]=await Promise.all([apiGet('Tasks'),apiGet('Users'),apiGet('Logs')]);
+  const data=await apiGetAll();
+  // data = { Tasks:[[...]], Users:[[...]], Logs:[[...]] }
+  // Falls back to 3 separate calls if server is old version
+  let tRows, uRows, lRows;
+  if(data && data.Tasks !== undefined){
+    tRows=data.Tasks; uRows=data.Users; lRows=data.Logs;
+  } else {
+    // Legacy: data is Tasks rows (old single-sheet get). Do parallel calls.
+    [tRows,uRows,lRows]=await Promise.all([
+      apiFetch({action:'get',sheet:'Tasks'}),
+      apiFetch({action:'get',sheet:'Users'}),
+      apiFetch({action:'get',sheet:'Logs'})
+    ]);
+  }
   state.tasks=parseRows(tRows,1).map(r=>({
-    id:r[0],name:r[1],minutes:parseFloat(r[2])||0,
-    frequency_days:r[3]?parseInt(r[3]):null, multiplier:r[4]?parseFloat(r[4]):null
+    id:String(r[0]),name:String(r[1]),minutes:parseFloat(r[2])||0,
+    frequency_days:r[3]?parseInt(r[3]):null, multiplier:r[4]?parseFloat(r[4]):null,
+    emoji:r[5]?String(r[5]):'🏠'
   }));
-  state.users=parseRows(uRows,1).map(r=>({id:r[0],name:r[1]}));
+  state.users=parseRows(uRows,1).map(r=>({id:String(r[0]),name:String(r[1])}));
   state.logs=parseRows(lRows,1).map(r=>({
-    id:r[0],task_id:r[1],user_id:r[2],date:r[3],minutes_earned:parseFloat(r[4])||0
+    id:String(r[0]),task_id:String(r[1]),user_id:String(r[2]),
+    date:String(r[3]),minutes_earned:parseFloat(r[4])||0
   }));
 }
 
@@ -799,6 +908,7 @@ function setupAddPage(){
       const chip=document.createElement('div');
       chip.className='task-chip'; chip.dataset.id=t.id;
       chip.innerHTML=`
+        <div style="font-size:22px;margin-bottom:4px;">${t.emoji||'🏠'}</div>
         <div class="chip-name">${t.name}</div>
         <div class="chip-meta">${t.minutes} min${t.frequency_days?' · every '+t.frequency_days+'d':''}</div>
         ${t.multiplier&&t.frequency_days?`<div class="chip-bonus">×${t.multiplier} when overdue</div>`:''}
@@ -827,13 +937,18 @@ function selectTask(task,el){
   document.querySelectorAll('.task-chip').forEach(c=>c.classList.remove('selected'));
   el.classList.add('selected'); selectedTask=task;
   document.getElementById('selected-info').style.display='block';
-  document.getElementById('sel-name').textContent=task.name;
+  document.getElementById('sel-name').textContent=(task.emoji||'🏠')+' '+task.name;
   const over=isOverdue(task);
   const mins=(task.multiplier&&over)?task.minutes*task.multiplier:task.minutes;
   document.getElementById('sel-time').textContent=`${mins} min earned`;
   const me=document.getElementById('sel-mult');
-  if(task.multiplier&&over){ me.style.display='inline-block'; me.textContent=`×${task.multiplier} applied!`; }
-  else me.style.display='none';
+  // Only show multiplier tag if task HAS a multiplier AND it's currently overdue
+  if(task.multiplier && task.multiplier>1 && over){
+    me.style.display='inline-block';
+    me.textContent=`×${task.multiplier} applied!`;
+  } else {
+    me.style.display='none';
+  }
 }
 
 function selectUser(user,el){
@@ -853,24 +968,38 @@ async function submitLog(){
   if(!selectedUser){ showToast('Select who did it!'); return; }
   const dateVal=document.getElementById('log-date').value;
   if(!dateVal){ showToast('Pick a date!'); return; }
-  const btn=document.getElementById('log-btn');
-  btn.disabled=true; btn.textContent='Saving…';
+
   const over=isOverdue(selectedTask);
   const mins=(selectedTask.multiplier&&over)?selectedTask.minutes*selectedTask.multiplier:selectedTask.minutes;
   const id=Date.now().toString();
-  try{
-    await apiAppend('Logs',[id,selectedTask.id,selectedUser.id,dateVal,mins]);
-    state.logs.push({id,task_id:selectedTask.id,user_id:selectedUser.id,date:dateVal,minutes_earned:mins});
-    showToast(`✓ ${mins} min for ${selectedUser.name}!`);
-    selectedTask=null;
-    document.querySelectorAll('.task-chip').forEach(c=>c.classList.remove('selected'));
-    document.getElementById('selected-info').style.display='none';
-  }catch(e){ showToast('Error: '+e.message); }
-  btn.disabled=false; btn.textContent='Log Task ✓';
+
+  // Optimistic: update local state immediately
+  const entry={id,task_id:selectedTask.id,user_id:selectedUser.id,date:dateVal,minutes_earned:mins};
+  state.logs.push(entry);
+  showToast(`✓ ${mins} min for ${selectedUser.name}!`);
+
+  // Reset UI instantly
+  const taskName=selectedTask.name;
+  selectedTask=null;
+  document.querySelectorAll('.task-chip').forEach(c=>c.classList.remove('selected'));
+  document.getElementById('selected-info').style.display='none';
+
+  // Fire-and-forget sync
+  apiAppend('Logs',[id,entry.task_id,entry.user_id,dateVal,mins]);
 }
 
 // ─── DASHBOARD ───────────────────────────────────────────────────
 const FILTERS=[{l:'7d',d:7},{l:'30d',d:30},{l:'3m',d:90},{l:'6m',d:180},{l:'All',d:null}];
+let chartInstances={};
+
+function getCSSVar(name){
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function destroyCharts(){
+  Object.values(chartInstances).forEach(c=>{ try{c.destroy();}catch(e){} });
+  chartInstances={};
+}
 
 function renderDashboard(){
   const bar=document.getElementById('filter-bar');
@@ -882,68 +1011,259 @@ function renderDashboard(){
   const cutoff=f.d?new Date(Date.now()-f.d*86400000):null;
   const logs=state.logs.filter(l=>!cutoff||new Date(l.date)>=cutoff);
   const el=document.getElementById('dashboard-content');
+  destroyCharts();
 
   if(!logs.length){
     el.innerHTML='<div class="empty"><div class="ico">📊</div><p>No data for this period.</p></div>'; return;
   }
 
+  // Per-user totals
   const totals={};
   state.users.forEach(u=>{ totals[u.id]={name:u.name,minutes:0,count:0}; });
   logs.forEach(l=>{ if(totals[l.user_id]){ totals[l.user_id].minutes+=l.minutes_earned; totals[l.user_id].count++; } });
-  const arr=Object.values(totals).sort((a,b)=>b.minutes-a.minutes);
+  const arr=Object.values(totals).filter(u=>u.count>0).sort((a,b)=>b.minutes-a.minutes);
   const total=arr.reduce((s,u)=>s+u.minutes,0);
 
+  // Colors — use user-defined colors
+  const userColors=state.users.map(u=>userColor(u.id));
+
   let html='';
+
+  // ── BALANCE KPI ──
   if(arr.length>=2){
-    const p=total>0?Math.round(arr[0].minutes/total*100):50;
+    const p1=arr[0], p2=arr[1];
+    const diff=Math.abs(p1.minutes-p2.minutes);
+    const diffH=(diff/60).toFixed(1);
+    const diffPct=total>0?Math.round(diff/total*100):0;
+    const isBalanced=diffPct<=10;
+    const leader=p1.minutes>p2.minutes?p1:p2;
+    const trailer=p1.minutes>p2.minutes?p2:p1;
+    const c1=userColor(state.users.find(u=>u.name===leader.name)?.id||'');
+    const c2=userColor(state.users.find(u=>u.name===trailer.name)?.id||'');
+    const balLabel=isBalanced
+      ?`⚖️ Balanced — within ${diffH}h of each other`
+      :`<span style="color:${c1};font-weight:700;">${leader.name}</span> is carrying <strong>${diffH}h more</strong> (${diffPct}% extra)`;
+    const balBg=isBalanced?'rgba(52,211,153,0.08)':'rgba(249,115,22,0.08)';
+    const balBorder=isBalanced?'#34d399':c1;
+    html+=`<div style="background:${balBg};border:1.5px solid ${balBorder};border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Workload Balance</div>
+      <div style="font-size:14px;line-height:1.5;">${balLabel}</div>
+      ${!isBalanced?`<div style="font-size:11px;color:var(--muted);margin-top:4px;">${trailer.name} needs <strong>+${diffH}h</strong> to catch up</div>`:''}
+    </div>`;
+
+    // Balance bar
+    const pct=total>0?Math.round(p1.minutes/total*100):50;
     html+=`<div class="bal-wrap">
       <div class="bal-labels">
-        <span style="color:var(--accent)">${arr[0].name} ${p}%</span>
-        <span style="color:var(--accent2)">${arr[1].name} ${100-p}%</span>
+        <span style="color:${userColor(state.users.find(u=>u.name===p1.name)?.id)}">${p1.name} ${pct}%</span>
+        <span style="color:${userColor(state.users.find(u=>u.name===p2.name)?.id)}">${p2.name} ${100-pct}%</span>
       </div>
       <div class="bal-track">
-        <div class="bal-fill bal-a" style="width:${p}%"></div>
-        <div class="bal-fill bal-b" style="width:${100-p}%"></div>
+        <div class="bal-fill" style="width:${pct}%;background:${userColor(state.users.find(u=>u.name===p1.name)?.id)};"></div>
+        <div class="bal-fill" style="width:${100-pct}%;background:${userColor(state.users.find(u=>u.name===p2.name)?.id)};"></div>
       </div>
     </div>`;
   }
 
+  // KPI cards — highlight active user
   html+='<div class="kpi-grid">';
   arr.forEach((u,i)=>{
-    html+=`<div class="kpi-card${i===0?' hi':''}">
-      <div class="kpi-label">${u.name}</div>
-      <div class="kpi-value">${(u.minutes/60).toFixed(1)}h</div>
-      <div class="kpi-sub">${u.count} tasks</div>
+    const uid=state.users.find(x=>x.name===u.name)?.id;
+    const isMe=uid===activeUserId;
+    const col=userColor(uid);
+    html+=`<div class="kpi-card" style="${isMe?`background:${col}22;border-color:${col};`:''}">
+      <div class="kpi-label" style="${isMe?`color:${col};`:''}">
+        ${isMe?'👤 ':''}<span style="color:${col};font-weight:700;">${u.name}</span>
+      </div>
+      <div class="kpi-value" style="${isMe?`color:${col};`:''}">  ${(u.minutes/60).toFixed(1)}h</div>
+      <div class="kpi-sub">${u.count} tasks · avg ${u.count>0?(u.minutes/u.count).toFixed(0):0} min/task</div>
     </div>`;
   });
   html+='</div>';
 
-  const tc={};
+  // ── CHART 1: Hours per week (line) ──
+  // Build weekly buckets for last N weeks
+  const weekBuckets={};
+  const now=new Date(); now.setHours(0,0,0,0);
+  logs.forEach(l=>{
+    const d=new Date(l.date);
+    const monday=new Date(d); monday.setDate(d.getDate()-((d.getDay()+6)%7));
+    monday.setHours(0,0,0,0);
+    const wk=monday.toISOString().split('T')[0];
+    if(!weekBuckets[wk]) weekBuckets[wk]={};
+    state.users.forEach(u=>{ if(!weekBuckets[wk][u.id]) weekBuckets[wk][u.id]=0; });
+    if(weekBuckets[wk][l.user_id]!==undefined) weekBuckets[wk][l.user_id]+=l.minutes_earned/60;
+    else weekBuckets[wk][l.user_id]=l.minutes_earned/60;
+  });
+  const wkLabels=Object.keys(weekBuckets).sort().slice(-12); // max 12 weeks
+
+  html+=`<div class="chart-section">
+    <div class="chart-title">Hours per Week</div>
+    <div class="chart-card"><div class="chart-wrap"><canvas id="chart-weekly"></canvas></div></div>
+  </div>`;
+
+  // ── CHART 2: Donut — share of total hours ──
+  html+=`<div class="chart-section">
+    <div class="chart-title">Share of Work</div>
+    <div class="chart-card" style="display:flex;gap:12px;align-items:center;">
+      <div style="flex:1;min-width:0;"><div class="chart-wrap" style="height:180px;"><canvas id="chart-donut"></canvas></div></div>
+      <div id="donut-legend" style="flex-shrink:0;display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+  </div>`;
+
+  // ── CHART 3: Top tasks bar ──
+  const taskTotals={};
   logs.forEach(l=>{
     const t=state.tasks.find(x=>x.id===l.task_id); if(!t)return;
-    if(!tc[t.id])tc[t.id]={name:t.name,by:{}};
-    tc[t.id].by[l.user_id]=(tc[t.id].by[l.user_id]||0)+1;
+    if(!taskTotals[t.id]) taskTotals[t.id]={taskId:t.id,name:t.name,by:{}};
+    taskTotals[t.id].by[l.user_id]=(taskTotals[t.id].by[l.user_id]||0)+l.minutes_earned/60;
   });
-  const rows=Object.values(tc).sort((a,b)=>{
-    const sa=Object.values(a.by).reduce((s,v)=>s+v,0);
-    const sb=Object.values(b.by).reduce((s,v)=>s+v,0);
-    return sb-sa;
-  });
+  const topTasks=Object.values(taskTotals)
+    .sort((a,b)=>Object.values(b.by).reduce((s,v)=>s+v,0)-Object.values(a.by).reduce((s,v)=>s+v,0))
+    .slice(0,8);
 
-  html+=`<div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;margin:18px 0 9px;">Task Breakdown</div>`;
-  html+='<div class="stat-list">';
-  rows.forEach(t=>{
-    const entries=Object.entries(t.by).map(([uid,cnt])=>{
-      const u=state.users.find(u=>u.id===uid); return `${u?u.name:'?'}: ${cnt}×`;
+  html+=`<div class="chart-section">
+    <div class="chart-title">Time by Task (hours)</div>
+    <div class="chart-card"><div class="chart-wrap-tall"><canvas id="chart-tasks"></canvas></div></div>
+  </div>`;
+
+  // ── Task breakdown list with edit/delete ──
+  html+=`<div class="chart-title" style="margin:18px 0 9px;">Task Breakdown</div><div class="stat-list">`;
+  Object.values(taskTotals).sort((a,b)=>{
+    return Object.values(b.by).reduce((s,v)=>s+v,0)-Object.values(a.by).reduce((s,v)=>s+v,0);
+  }).forEach(t=>{
+    const task=state.tasks.find(x=>x.id===t.taskId);
+    const entries=Object.entries(t.by).map(([uid,hrs])=>{
+      const u=state.users.find(u=>u.id===uid);
+      const col=userColor(uid);
+      return `<span style="color:${col};font-weight:500;">${u?u.name:'?'}</span>: ${hrs.toFixed(1)}h`;
     }).join(' · ');
     const tot=Object.values(t.by).reduce((s,v)=>s+v,0);
     html+=`<div class="stat-row">
-      <div><div class="stat-name">${t.name}</div><div class="stat-sub">${entries}</div></div>
-      <div class="stat-num">${tot}×</div>
+      <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+        <span style="font-size:18px;flex-shrink:0;">${task?.emoji||'🏠'}</span>
+        <div style="min-width:0;">
+          <div class="stat-name">${t.name}</div>
+          <div class="stat-sub">${entries}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <div class="stat-num">${tot.toFixed(1)}h</div>
+        <button class="btn btn-secondary btn-sm" onclick="openLogModal('${t.taskId}','${t.name}')">Logs</button>
+      </div>
     </div>`;
   });
   html+='</div>';
+
   el.innerHTML=html;
+
+  // ── Render charts after DOM update ──
+  requestAnimationFrame(()=>{
+    const isDark=document.documentElement.getAttribute('data-theme')!=='light';
+    const gridColor=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
+    const textColor=getCSSVar('--muted');
+    const surfaceColor=getCSSVar('--surface');
+    const fallback=userColors[0]||getCSSVar('--accent');
+
+    Chart.defaults.color=textColor;
+    Chart.defaults.font.family='DM Mono, monospace';
+    Chart.defaults.font.size=11;
+
+    // Weekly line chart
+    const weekCtx=document.getElementById('chart-weekly');
+    if(weekCtx && wkLabels.length>0){
+      chartInstances.weekly=new Chart(weekCtx,{
+        type:'line',
+        data:{
+          labels:wkLabels.map(w=>{
+            const d=new Date(w); return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+          }),
+          datasets: state.users.map((u,i)=>({
+            label:u.name,
+            data:wkLabels.map(wk=>{
+              const v=weekBuckets[wk]?.[u.id]||0; return +v.toFixed(2);
+            }),
+            borderColor:userColors[i]||fallback,
+            backgroundColor:(userColors[i]||fallback)+'28',
+            fill:true, tension:0.4, pointRadius:3, pointHoverRadius:5,
+            borderWidth:2,
+          }))
+        },
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          interaction:{mode:'index',intersect:false},
+          plugins:{legend:{position:'top',labels:{boxWidth:10,padding:12}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}h`}}},
+          scales:{
+            x:{grid:{color:gridColor},ticks:{maxRotation:0,maxTicksLimit:6}},
+            y:{grid:{color:gridColor},beginAtZero:true,ticks:{callback:v=>v+'h'}}
+          }
+        }
+      });
+    }
+
+    // Donut
+    const donutCtx=document.getElementById('chart-donut');
+    if(donutCtx && arr.length>0){
+      chartInstances.donut=new Chart(donutCtx,{
+        type:'doughnut',
+        data:{
+          labels:arr.map(u=>u.name),
+          datasets:[{
+            data:arr.map(u=>+(u.minutes/60).toFixed(2)),
+            backgroundColor:arr.map((u)=>{ const uid=state.users.find(x=>x.name===u.name)?.id; return userColor(uid); }),
+            borderColor:surfaceColor, borderWidth:3, hoverOffset:6
+          }]
+        },
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          cutout:'68%',
+          plugins:{
+            legend:{display:false},
+            tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.parsed.toFixed(1)}h`}}
+          }
+        }
+      });
+      // Custom legend
+      const leg=document.getElementById('donut-legend');
+      if(leg) leg.innerHTML=arr.map((u)=>{
+        const uid=state.users.find(x=>x.name===u.name)?.id;
+        const col=userColor(uid);
+        return `<div style="display:flex;align-items:center;gap:6px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:${col};flex-shrink:0;"></span>
+          <span style="font-size:11px;">${u.name}<br/><span style="color:var(--muted)">${(u.minutes/60).toFixed(1)}h</span></span>
+        </div>`;
+      }).join('');
+    }
+
+    // Stacked bar by task
+    const taskCtx=document.getElementById('chart-tasks');
+    if(taskCtx && topTasks.length>0){
+      chartInstances.tasks=new Chart(taskCtx,{
+        type:'bar',
+        data:{
+          labels:topTasks.map(t=>t.name),
+          datasets:state.users.map((u,i)=>({
+            label:u.name,
+            data:topTasks.map(t=>+(t.by[u.id]||0).toFixed(2)),
+            backgroundColor:userColors[i]||fallback,
+            borderRadius:4, borderSkipped:false,
+          }))
+        },
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          indexAxis:'y',
+          plugins:{
+            legend:{position:'top',labels:{boxWidth:10,padding:12}},
+            tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.x.toFixed(1)}h`}}
+          },
+          scales:{
+            x:{stacked:true,grid:{color:gridColor},ticks:{callback:v=>v+'h'},beginAtZero:true},
+            y:{stacked:true,grid:{display:false},ticks:{font:{size:10}}}
+          }
+        }
+      });
+    }
+  });
 }
 
 function setFilter(l){ currentFilter=l; renderDashboard(); }
@@ -980,7 +1300,7 @@ function renderPriorities(){
     return `<div class="pri-card ${sc}">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
         <div>
-          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;">${task.name}</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;">${task.emoji||'🏠'} ${task.name}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:3px;">${task.minutes} min · every ${task.frequency_days}d · ${lastTxt}</div>
           ${mult}
         </div>
@@ -998,22 +1318,39 @@ function renderSettingsPage(){
   const au=state.users.find(u=>u.id===activeUserId);
   document.getElementById('active-user-display').innerHTML=au
     ?`<div style="display:flex;align-items:center;gap:9px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;">
-        <span class="user-dot"></span>
+        <span style="width:10px;height:10px;border-radius:50%;background:${userColor(au.id)};flex-shrink:0;display:inline-block;"></span>
         <span style="font-family:'Syne',sans-serif;font-weight:700;">${au.name}</span>
         <span style="font-size:10px;color:var(--muted);margin-left:auto;">this device</span>
        </div>`
     :'<p style="font-size:12px;color:var(--muted);">No user selected.</p>';
 
+  // Users list with color picker
   document.getElementById('users-list').innerHTML=state.users.length
-    ?state.users.map(u=>`<span class="user-chip">${u.name}<button class="remove-btn" onclick="removeUser('${u.id}')">×</button></span>`).join('')
+    ?state.users.map(u=>`
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="width:10px;height:10px;border-radius:50%;background:${userColor(u.id)};display:inline-block;flex-shrink:0;"></span>
+            <span style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;">${u.name}</span>
+          </div>
+          <button class="remove-btn" onclick="removeUser('${u.id}')">×</button>
+        </div>
+        <div class="color-swatches">
+          ${USER_PALETTE.map(c=>`<div class="color-swatch${userColor(u.id)===c?' selected':''}" style="background:${c};" onclick="pickUserColor('${u.id}','${c}')"></div>`).join('')}
+        </div>
+      </div>`).join('')
     :'<p style="font-size:12px;color:var(--muted);">No users yet.</p>';
 
+  // Tasks list with emoji
   document.getElementById('tasks-list').innerHTML=state.tasks.length
-    ?state.tasks.map(t=>`<div class="list-card mb-0" style="margin-bottom:8px;">
+    ?state.tasks.map(t=>`<div class="list-card" style="margin-bottom:8px;">
         <div class="list-card-row">
-          <div>
-            <div class="list-card-title">${t.name}</div>
-            <div class="list-card-meta">${t.minutes} min${t.frequency_days?` · every ${t.frequency_days}d`:''}${t.multiplier?` · ×${t.multiplier} overdue`:''}</div>
+          <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+            <span style="font-size:20px;flex-shrink:0;">${t.emoji||'🏠'}</span>
+            <div>
+              <div class="list-card-title">${t.name}</div>
+              <div class="list-card-meta">${t.minutes} min${t.frequency_days?` · every ${t.frequency_days}d`:''}${t.multiplier?` · ×${t.multiplier} overdue`:''}</div>
+            </div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0;">
             <button class="btn btn-secondary btn-sm" onclick="openTaskModal('${t.id}')">Edit</button>
@@ -1024,45 +1361,78 @@ function renderSettingsPage(){
     :'<p style="font-size:12px;color:var(--muted);">No tasks yet.</p>';
 }
 
+function pickUserColor(uid, color){
+  setUserColor(uid, color);
+  renderSettingsPage();
+  // Update topbar dot if this is the active user
+  if(uid===activeUserId){
+    document.querySelector('.topbar .user-dot').style.background=color;
+  }
+  renderDashboard();
+}
+
 async function addUser(){
   const inp=document.getElementById('new-user-input');
   const name=inp.value.trim(); if(!name)return;
   const id=Date.now().toString();
-  try{
-    await apiAppend('Users',[id,name]);
-    state.users.push({id,name}); inp.value='';
-    renderSettingsPage(); setupAddPage();
-    showToast('User added!');
-  }catch(e){ showToast('Error: '+e.message); }
+  // Optimistic
+  state.users.push({id,name}); inp.value='';
+  renderSettingsPage(); setupAddPage();
+  showToast('User added!');
+  apiAppend('Users',[id,name]);
 }
 
 async function removeUser(id){
   if(!confirm('Remove this user?')) return;
   state.users=state.users.filter(u=>u.id!==id);
-  await apiRewrite('Users',[['id','name'],...state.users.map(u=>[u.id,u.name])]);
   renderSettingsPage(); showToast('User removed.');
+  apiRewrite('Users',[['id','name'],...state.users.map(u=>[u.id,u.name])]);
 }
 
 async function removeTask(id){
   if(!confirm('Remove this task? Logs will be kept.')) return;
   state.tasks=state.tasks.filter(t=>t.id!==id);
-  await apiRewrite('Tasks',[
+  renderSettingsPage(); setupAddPage(); showToast('Task removed.');
+  apiRewrite('Tasks',[
     ['id','name','minutes','frequency_days','multiplier'],
     ...state.tasks.map(t=>[t.id,t.name,t.minutes,t.frequency_days||'',t.multiplier||''])
   ]);
-  renderSettingsPage(); setupAddPage(); showToast('Task removed.');
+}
+
+function buildEmojiPicker(){
+  const grid=document.getElementById('emoji-grid');
+  grid.innerHTML=TASK_EMOJIS.map(e=>
+    `<div class="emoji-opt${e===selectedEmoji?' selected':''}" onclick="pickEmoji('${e}')">${e}</div>`
+  ).join('');
+}
+
+function toggleEmojiPicker(){
+  const p=document.getElementById('emoji-picker');
+  p.style.display=p.style.display==='none'?'block':'none';
+  if(p.style.display==='block') buildEmojiPicker();
+}
+
+function pickEmoji(e){
+  selectedEmoji=e;
+  document.getElementById('emoji-preview').textContent=e;
+  document.getElementById('emoji-picker').style.display='none';
 }
 
 function openTaskModal(taskId){
   editingTaskId=taskId||null;
   document.getElementById('modal-title').textContent=taskId?'Edit Task':'Add Task';
+  document.getElementById('emoji-picker').style.display='none';
   if(taskId){
     const t=state.tasks.find(t=>t.id===taskId);
+    selectedEmoji=t.emoji||'🏠';
+    document.getElementById('emoji-preview').textContent=selectedEmoji;
     document.getElementById('t-name').value=t.name;
     document.getElementById('t-mins').value=t.minutes;
     document.getElementById('t-freq').value=t.frequency_days||'';
     document.getElementById('t-mult').value=t.multiplier||'';
   }else{
+    selectedEmoji='🏠';
+    document.getElementById('emoji-preview').textContent='🏠';
     ['t-name','t-mins','t-freq','t-mult'].forEach(id=>document.getElementById(id).value='');
   }
   document.getElementById('task-modal').classList.add('open');
@@ -1078,20 +1448,20 @@ async function saveTask(){
   if(!name||!mins){ showToast('Name and time are required.'); return; }
   if(editingTaskId){
     const idx=state.tasks.findIndex(t=>t.id===editingTaskId);
-    state.tasks[idx]={id:editingTaskId,name,minutes:mins,
+    state.tasks[idx]={id:editingTaskId,name,minutes:mins,emoji:selectedEmoji,
       frequency_days:freq?parseInt(freq):null, multiplier:mult?parseFloat(mult):null};
-    await apiRewrite('Tasks',[
-      ['id','name','minutes','frequency_days','multiplier'],
-      ...state.tasks.map(t=>[t.id,t.name,t.minutes,t.frequency_days||'',t.multiplier||''])
+    closeTaskModal(); renderSettingsPage(); setupAddPage(); showToast('Task updated!');
+    apiRewrite('Tasks',[
+      ['id','name','minutes','frequency_days','multiplier','emoji'],
+      ...state.tasks.map(t=>[t.id,t.name,t.minutes,t.frequency_days||'',t.multiplier||'',t.emoji||'🏠'])
     ]);
-    showToast('Task updated!');
   }else{
     const id=Date.now().toString();
-    await apiAppend('Tasks',[id,name,mins,freq||'',mult||'']);
-    state.tasks.push({id,name,minutes:mins,frequency_days:freq?parseInt(freq):null,multiplier:mult?parseFloat(mult):null});
-    showToast('Task added!');
+    const task={id,name,minutes:mins,emoji:selectedEmoji,frequency_days:freq?parseInt(freq):null,multiplier:mult?parseFloat(mult):null};
+    state.tasks.push(task);
+    closeTaskModal(); renderSettingsPage(); setupAddPage(); showToast('Task added!');
+    apiAppend('Tasks',[id,name,mins,freq||'',mult||'',selectedEmoji]);
   }
-  closeTaskModal(); renderSettingsPage(); setupAddPage();
 }
 
 // ─── THEME ───────────────────────────────────────────────────────
@@ -1125,6 +1495,23 @@ function doPost(e){return handle(e)}
 function handle(e){
   try{
     var p=e.parameter,ss=SpreadsheetApp.getActiveSpreadsheet();
+    if(p.action==='getAll'){
+      var sheets=['Tasks','Users','Logs'];
+      var result={};
+      var headers={
+        Tasks:['id','name','minutes','frequency_days','multiplier'],
+        Users:['id','name'],
+        Logs:['id','task_id','user_id','date','minutes_earned']
+      };
+      sheets.forEach(function(name){
+        var sh=ss.getSheetByName(name);
+        if(!sh){ sh=ss.insertSheet(name); sh.appendRow(headers[name]); }
+        var vals=sh.getDataRange().getValues();
+        if(vals.length===1&&vals[0].join('')==='') vals=[];
+        result[name]=vals;
+      });
+      return out(result);
+    }
     var sh=ss.getSheetByName(p.sheet)||ss.insertSheet(p.sheet);
     if(p.action==='get'){
       return out(sh.getDataRange().getValues());
@@ -1146,6 +1533,57 @@ function out(d){
 function copyScript(){
   navigator.clipboard.writeText(SCRIPT_CODE).then(()=>showToast('Script copied!'))
     .catch(()=>{ prompt('Copy this script:',SCRIPT_CODE); });
+}
+
+// ─── LOG ENTRY MODAL ─────────────────────────────────────────────
+let logModalTaskId=null;
+
+function openLogModal(taskId, taskName){
+  logModalTaskId=taskId;
+  const task=state.tasks.find(t=>t.id===taskId);
+  document.getElementById('log-modal-title').textContent=(task?.emoji||'🏠')+' '+taskName;
+  renderLogModalContent();
+  document.getElementById('log-modal').classList.add('open');
+}
+
+function renderLogModalContent(){
+  const el=document.getElementById('log-modal-content');
+  const entries=state.logs
+    .filter(l=>l.task_id===logModalTaskId)
+    .sort((a,b)=>new Date(b.date)-new Date(a.date));
+
+  if(!entries.length){
+    el.innerHTML='<p style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0;">No logs yet.</p>';
+    return;
+  }
+  el.innerHTML=entries.map(log=>{
+    const u=state.users.find(u=>u.id===log.user_id);
+    const col=userColor(log.user_id);
+    const d=new Date(log.date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+    return `<div class="log-entry-row">
+      <div class="log-entry-left">
+        <div class="log-entry-name" style="color:${col};">${u?u.name:'?'}</div>
+        <div class="log-entry-meta">${d} · ${log.minutes_earned} min</div>
+      </div>
+      <div class="log-entry-actions">
+        <button class="btn btn-danger btn-sm" onclick="deleteLog('${log.id}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function closeLogModal(){ document.getElementById('log-modal').classList.remove('open'); logModalTaskId=null; }
+
+function deleteLog(logId){
+  if(!confirm('Delete this log entry?')) return;
+  state.logs=state.logs.filter(l=>l.id!==logId);
+  renderLogModalContent();
+  showToast('Log deleted');
+  renderDashboard();
+  apiRewrite('Logs',[
+    ['id','task_id','user_id','date','minutes_earned'],
+    ...state.logs.map(l=>[l.id,l.task_id,l.user_id,l.date,l.minutes_earned])
+  ]);
 }
 
 // ─── TOAST ───────────────────────────────────────────────────────
